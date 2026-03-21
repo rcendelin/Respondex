@@ -1,9 +1,17 @@
 import { z } from 'zod'
 import { Strategy, SimulationStatus, SupportedModel } from '../types/simulation.js'
 
+/** UUID v4 pattern — used to validate ID fields from queue messages and stored blobs */
+const uuidV4 = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    'ID musí být platné UUID v4'
+  )
+
 export const SimulationConfigSchema = z.object({
-  population_id: z.string().min(1, 'ID populace nesmí být prázdné'),
-  questionnaire_id: z.string().min(1, 'ID dotazníku nesmí být prázdné'),
+  population_id: uuidV4,
+  questionnaire_id: uuidV4,
   strategy: z.nativeEnum(Strategy, {
     errorMap: () => ({ message: 'Strategie musí být A, B, C, D, E nebo F' }),
   }),
@@ -30,10 +38,12 @@ export const SimulationConfigSchema = z.object({
 })
 
 export const SimulationChunkMessageSchema = z.object({
-  simulation_id: z.string().min(1),
+  simulation_id: uuidV4,
   chunk_index: z.number().int().min(0),
-  chunk_number: z.string().regex(/^\d{3}$/, 'chunk_number must be 3-digit zero-padded'),
-  person_ids: z.array(z.string().min(1)).min(1),
+  // 3–6 digit zero-padded number — allows up to 999 999 chunks (safe for current 1000-person cap)
+  chunk_number: z.string().regex(/^\d{3,6}$/, 'chunk_number must be 3–6 digit zero-padded decimal'),
+  // Each person_id must also be a UUID to prevent path traversal in blob paths
+  person_ids: z.array(uuidV4).min(1).max(20),
   config: SimulationConfigSchema,
 })
 

@@ -8,6 +8,7 @@ import {
   SimulationStatus,
   SupportedModel,
   QuestionType,
+  SimulationChunkMessageSchema,
 } from '@respondex/shared'
 import type { SimulationResponse } from '@respondex/shared'
 
@@ -205,6 +206,104 @@ describe('chunk message JSON parsing', () => {
     expect(simulation_id).toBe('abc')
     expect(chunk_index).toBeUndefined()
     expect(person_ids).toBeUndefined()
+  })
+})
+
+// ── SimulationChunkMessageSchema Zod validation (security: path traversal prevention) ──
+
+describe('SimulationChunkMessageSchema validation', () => {
+  const VALID_MSG = {
+    simulation_id: '11111111-1111-4111-8111-111111111111',
+    chunk_index: 0,
+    chunk_number: '001',
+    person_ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    config: {
+      population_id: '22222222-2222-4222-8222-222222222222',
+      questionnaire_id: '33333333-3333-4333-8333-333333333333',
+      strategy: Strategy.A,
+      model: SupportedModel.GPT_4O_MINI,
+      temperature: 0.7,
+      runs_per_person: 1,
+    },
+  }
+
+  it('accepts a valid message', () => {
+    const result = SimulationChunkMessageSchema.safeParse(VALID_MSG)
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects path traversal in simulation_id', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      simulation_id: '../../other-container/admin',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects path traversal in population_id', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      config: { ...VALID_MSG.config, population_id: '../../secret' },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects path traversal in questionnaire_id', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      config: { ...VALID_MSG.config, questionnaire_id: '../meta' },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects non-UUID simulation_id (just a string)', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      simulation_id: 'not-a-uuid',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects invalid chunk_number format', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      chunk_number: '001/../meta',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts 6-digit chunk_number (large simulations)', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      chunk_number: '000050',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects unsupported model string', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      config: { ...VALID_MSG.config, model: 'gpt-99-turbo-injected' },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects person_ids with path traversal', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      person_ids: ['../../admin'],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects person_ids array exceeding max 20', () => {
+    const result = SimulationChunkMessageSchema.safeParse({
+      ...VALID_MSG,
+      person_ids: Array.from({ length: 21 }, (_, i) =>
+        `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`
+      ),
+    })
+    expect(result.success).toBe(false)
   })
 })
 

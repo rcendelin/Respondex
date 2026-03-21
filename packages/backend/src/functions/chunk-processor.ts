@@ -9,8 +9,9 @@ import type {
   SimulationChunkMessage,
   SimulationMeta,
   SimulationResponse,
+  SupportedModel,
 } from '@respondex/shared'
-import { SimulationStatus, Strategy } from '@respondex/shared'
+import { SimulationStatus, Strategy, SimulationChunkMessageSchema } from '@respondex/shared'
 
 /** Max OpenAI call retries for refusals */
 const MAX_REFUSAL_RETRIES = 2
@@ -28,14 +29,23 @@ async function processSimulationChunk(
   messageText: unknown,
   ctx: InvocationContext
 ): Promise<void> {
-  // Deserialize queue message (Azure SDK delivers base64-decoded string or Buffer)
+  // Deserialize and validate queue message with Zod schema.
+  // This enforces UUID format on all ID fields (prevents path traversal) and validates
+  // chunk_number format, model whitelist, and all config bounds. Invalid messages are
+  // thrown to trigger Azure dead-letter (maxDequeueCount = 5).
   let msg: SimulationChunkMessage
   try {
     const raw = typeof messageText === 'string' ? messageText : String(messageText)
-    msg = JSON.parse(raw) as SimulationChunkMessage
-  } catch {
-    ctx.error('Failed to parse chunk message — moving to dead letter')
-    throw new Error('Invalid chunk message format')
+    const parsed = JSON.parse(raw) as unknown
+    const result = SimulationChunkMessageSchema.safeParse(parsed)
+    if (!result.success) {
+      const firstIssue = result.error.issues[0]
+      throw new Error(`Chunk message validation failed: ${firstIssue?.message ?? 'unknown'}`)
+    }
+    msg = result.data as SimulationChunkMessage
+  } catch (err) {
+    ctx.error('Failed to parse/validate chunk message — moving to dead letter:', err instanceof Error ? err.message : String(err))
+    throw err instanceof Error ? err : new Error('Invalid chunk message format')
   }
 
   const { simulation_id, chunk_index, chunk_number, person_ids, config } = msg
@@ -92,7 +102,7 @@ async function processSimulationChunk(
             person,
             question,
             config.strategy as Strategy,
-            config.model,
+            config.model as SupportedModel, // guaranteed by SimulationChunkMessageSchema.safeParse above
             config.temperature,
             run,
             ctx
@@ -154,7 +164,7 @@ async function callWithRefusalRetry(
   person: Person,
   question: Question,
   strategy: Strategy,
-  model: string,
+  model: SupportedModel,
   temperature: number,
   run: number,
   ctx: InvocationContext
@@ -164,15 +174,16 @@ async function callWithRefusalRetry(
 
   for (let attempt = 0; attempt <= MAX_REFUSAL_RETRIES; attempt++) {
     const result = await openai.callModel({
-      model: model as never, // model is validated as SupportedModel in Zod schema
+      model, // validated as SupportedModel via SimulationChunkMessageSchema at deserialization
       systemPrompt: system,
       userPrompt: user,
       temperature,
     })
 
     if (isRefusal(result.content)) {
+      // Log question and run, but not person.id (avoid PII in Application Insights logs)
       ctx.warn(
-        `Refusal detected for person=${person.id} question=${question.id} run=${run} attempt=${attempt + 1}`
+        `Refusal detected for question=${question.id} run=${run} attempt=${attempt + 1}`
       )
       if (attempt < MAX_REFUSAL_RETRIES) {
         // Append refusal fallback to user message and retry

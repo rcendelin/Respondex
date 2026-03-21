@@ -132,6 +132,10 @@ function formatInstruction(question: Question, shuffledOptions?: string[]): stri
   }
 }
 
+// Cap life_story to limit prompt size and reduce adversarial injection surface area.
+// The model output is never executed as code; output is validated per question type.
+const MAX_LIFE_STORY_CHARS = 2000
+
 // ── Build persona block (P02 / P04) ───────────────────────────────────────
 function buildPersonaBlock(person: Person): string {
   const lines: string[] = [`PROFIL RESPONDENTA:`, `- Věk: ${person.age} let`]
@@ -181,7 +185,8 @@ export function buildPrompt(
 
   // Strategy C: use life story if available, otherwise fall back to A
   if (strategy === Strategy.C && person.life_story) {
-    userMessage = `${personaBlock}\n\nOSOBNÍ PŘÍBĚH:\n${person.life_story}\n\nNa základě tohoto profilu a osobního příběhu odpověz na následující otázku jako tento respondent:\n${formatInstr}`
+    const lifeStory = person.life_story.substring(0, MAX_LIFE_STORY_CHARS)
+    userMessage = `${personaBlock}\n\nOSOBNÍ PŘÍBĚH:\n${lifeStory}\n\nNa základě tohoto profilu a osobního příběhu odpověz na následující otázku jako tento respondent:\n${formatInstr}`
   } else {
     // Strategy A (or C fallback): persona only
     userMessage = `${personaBlock}\n\nOdpověz na následující otázku jako tento respondent:\n${formatInstr}`
