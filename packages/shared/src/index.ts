@@ -13,3 +13,10 @@ export * from './types/analytics.js'
 export * from './validation/person.schema.js'
 export * from './validation/questionnaire.schema.js'
 export * from './validation/simulation.schema.js'
+
+// XLSX utilities
+export * from './xlsx/parse-result.js'
+export * from './xlsx/population-parser.js'
+export * from './xlsx/questionnaire-parser.js'
+export * from './xlsx/population-export.js'
+export * from './xlsx/results-export.js'
