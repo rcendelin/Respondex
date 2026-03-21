@@ -8,7 +8,13 @@ export const DemographicsSchema = z.object({
   employment_status: z.nativeEnum(EmploymentStatus).optional(),
   income_level: z.nativeEnum(IncomeLevel).optional(),
   region: z.nativeEnum(Region).optional(),
-  custom_fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  // Key max 100 chars, string values max 1000 chars — limits prompt injection via custom demographics
+  custom_fields: z
+    .record(
+      z.string().max(100),
+      z.union([z.string().max(1000), z.number(), z.boolean()])
+    )
+    .optional(),
 })
 
 export const PersonSchema = z.object({
@@ -22,7 +28,9 @@ export const PersonSchema = z.object({
     errorMap: () => ({ message: 'Pohlaví musí být "Muž" nebo "Žena"' }),
   }),
   demographics: DemographicsSchema.optional(),
-  life_story: z.string().optional(),
+  // 5000 chars cap: generous for a full life story, limits prompt injection surface area.
+  // prompt-builder additionally truncates to 2000 chars before inserting into LLM prompt.
+  life_story: z.string().max(5000).optional(),
 })
 
 export const PersonMetadataSchema = z.object({

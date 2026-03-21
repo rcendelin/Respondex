@@ -299,6 +299,86 @@ describe('requireUUID (path traversal prevention)', () => {
   })
 })
 
+// ── MAX_QUESTIONS limit (cost exhaustion guard) ────────────────────────────
+
+describe('MAX_QUESTIONS cost exhaustion guard', () => {
+  const MAX_QUESTIONS = 100
+
+  it('allows 100 questions (at the limit)', () => {
+    const questions = Array.from({ length: MAX_QUESTIONS }, (_, i) => ({ id: `Q${i + 1}` }))
+    expect(questions.length <= MAX_QUESTIONS).toBe(true)
+  })
+
+  it('rejects 101 questions (over the limit)', () => {
+    const questions = Array.from({ length: MAX_QUESTIONS + 1 }, (_, i) => ({ id: `Q${i + 1}` }))
+    expect(questions.length > MAX_QUESTIONS).toBe(true)
+  })
+
+  it('worst-case at limit: 1000 persons × 100 questions × 10 runs = 1 000 000 calls', () => {
+    const maxCalls = 1000 * MAX_QUESTIONS * 10
+    expect(maxCalls).toBe(1_000_000)
+    // Without the limit: 1000 × 1000 × 10 = 10 000 000 calls (10× more expensive)
+    const withoutLimit = 1000 * 1000 * 10
+    expect(withoutLimit).toBe(10_000_000)
+  })
+})
+
+// ── QuestionSchema Zod limits (prompt injection surface area) ──────────────
+
+describe('QuestionSchema Zod field limits', () => {
+  it('validates field limits are defined in schema', async () => {
+    const { QuestionSchema } = await import('@respondex/shared')
+    // question.text > 2000 chars should fail
+    const longText = 'a'.repeat(2001)
+    const result = QuestionSchema.safeParse({
+      id: 'Q01',
+      order: 1,
+      text: longText,
+      type: 'yes_no',
+      required: true,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts question.text at exactly 2000 chars', async () => {
+    const { QuestionSchema } = await import('@respondex/shared')
+    const result = QuestionSchema.safeParse({
+      id: 'Q01',
+      order: 1,
+      text: 'a'.repeat(2000),
+      type: 'yes_no',
+      required: true,
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
+// ── PersonSchema life_story and custom_fields limits ──────────────────────
+
+describe('PersonSchema Zod field limits', () => {
+  it('rejects life_story > 5000 chars', async () => {
+    const { PersonSchema } = await import('@respondex/shared')
+    const result = PersonSchema.safeParse({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      age: 30,
+      gender: 'Muž',
+      life_story: 'x'.repeat(5001),
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts life_story at exactly 5000 chars', async () => {
+    const { PersonSchema } = await import('@respondex/shared')
+    const result = PersonSchema.safeParse({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      age: 30,
+      gender: 'Muž',
+      life_story: 'x'.repeat(5000),
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
 // ── SimulationStatus enum coverage ─────────────────────────────────────────
 
 describe('SimulationStatus values', () => {

@@ -13,21 +13,23 @@ export const MatrixRowSchema = z.object({
 
 export const QuestionSchema = z
   .object({
-    id: z.string().min(1, 'ID otázky nesmí být prázdné'),
+    id: z.string().min(1, 'ID otázky nesmí být prázdné').max(50),
     order: z.number().int().min(1),
-    text: z.string().min(1, 'Text otázky nesmí být prázdný'),
+    // 2000 chars: enough for a full paragraph, caps prompt injection surface area
+    text: z.string().min(1, 'Text otázky nesmí být prázdný').max(2000),
     type: z.nativeEnum(QuestionType, {
       errorMap: () => ({ message: 'Neplatný typ otázky' }),
     }),
-    options: z.array(z.string().min(1)).optional(),
-    matrix_rows: z.array(MatrixRowSchema).optional(),
+    // Each option capped at 200 chars; max 50 options per question
+    options: z.array(z.string().min(1).max(200)).max(50).optional(),
+    matrix_rows: z.array(MatrixRowSchema).max(50).optional(),
     scale_min: z.number().optional(),
     scale_max: z.number().optional(),
-    scale_min_label: z.string().optional(),
-    scale_max_label: z.string().optional(),
+    scale_min_label: z.string().max(100).optional(),
+    scale_max_label: z.string().max(100).optional(),
     required: z.boolean(),
     skip_logic: SkipLogicSchema.optional(),
-    piping_from: z.string().optional(),
+    piping_from: z.string().max(50).optional(),
   })
   .superRefine((question, ctx) => {
     // Validate options are present for choice-based types

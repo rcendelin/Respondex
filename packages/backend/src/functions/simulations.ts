@@ -11,6 +11,9 @@ const CHUNK_SIZE = 20
 const QUEUE_NAME = 'simulation-chunks'
 /** Maximum persons per simulation (resource exhaustion guard) */
 const MAX_PERSONS = 1_000
+/** Maximum questions per questionnaire in a simulation (cost exhaustion guard).
+ *  At max load: 1000 persons × 100 questions × 10 runs = 1 000 000 API calls. */
+const MAX_QUESTIONS = 100
 /** Maximum request body size for JSON config in bytes (8 KB is generous for a config object) */
 const MAX_CONFIG_BODY_BYTES = 8 * 1024
 
@@ -63,6 +66,15 @@ async function createSimulation(req: HttpRequest, ctx: InvocationContext): Promi
     const questionnaireExists = await svc.blobExists(`data/questionnaires/${questionnaireId}/meta.json`)
     if (!questionnaireExists) {
       throw new NotFoundError('Dotazník nebyl nalezen')
+    }
+
+    // Validate question count before starting (cost exhaustion guard)
+    const questions = await svc.readJson<unknown[]>(`data/questionnaires/${questionnaireId}/questions.json`)
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new ValidationError('Dotazník neobsahuje žádné otázky')
+    }
+    if (questions.length > MAX_QUESTIONS) {
+      throw new ValidationError(`Dotazník obsahuje ${questions.length} otázek — maximum je ${MAX_QUESTIONS}`)
     }
 
     // Load persons and enforce person count limit
