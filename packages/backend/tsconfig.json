@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDirs": ["src", "../shared/src"],
     "outDir": "dist",
     "module": "CommonJS",
     "moduleResolution": "Node10",
@@ -10,6 +10,6 @@
       "@respondex/shared/*": ["../shared/src/*"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "include": ["src/**/*", "../shared/src/**/*"],
+  "exclude": ["dist", "node_modules", "../shared/src/**/__tests__/**"]
 }
