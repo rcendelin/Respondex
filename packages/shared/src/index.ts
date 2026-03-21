@@ -1,4 +1,15 @@
 // Shared types and validation schemas for Respondex
-// Will be populated in Blok 02
+// Re-exported for use in both frontend and backend
 
 export const RESPONDEX_VERSION = '0.0.1'
+
+// Types
+export * from './types/person.js'
+export * from './types/questionnaire.js'
+export * from './types/simulation.js'
+export * from './types/analytics.js'
+
+// Validation schemas
+export * from './validation/person.schema.js'
+export * from './validation/questionnaire.schema.js'
+export * from './validation/simulation.schema.js'
