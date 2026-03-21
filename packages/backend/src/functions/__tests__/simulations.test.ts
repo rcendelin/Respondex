@@ -310,3 +310,63 @@ describe('SimulationStatus values', () => {
     expect(SimulationStatus.PENDING).toBe('pending')
   })
 })
+
+// ── Results pagination logic ───────────────────────────────────────────────
+
+describe('results pagination', () => {
+  function paginateResponses<T>(arr: T[], limit: number | undefined, offset: number): T[] {
+    if (limit !== undefined) return arr.slice(offset, offset + limit)
+    return arr.slice(offset)
+  }
+
+  it('returns all responses when no limit specified', () => {
+    const responses = Array.from({ length: 50 }, (_, i) => ({ id: i }))
+    const result = paginateResponses(responses, undefined, 0)
+    expect(result).toHaveLength(50)
+  })
+
+  it('returns first N responses with limit', () => {
+    const responses = Array.from({ length: 50 }, (_, i) => ({ id: i }))
+    const result = paginateResponses(responses, 10, 0)
+    expect(result).toHaveLength(10)
+    expect(result[0]).toEqual({ id: 0 })
+  })
+
+  it('returns correct page with offset', () => {
+    const responses = Array.from({ length: 50 }, (_, i) => ({ id: i }))
+    const result = paginateResponses(responses, 10, 10)
+    expect(result).toHaveLength(10)
+    expect(result[0]).toEqual({ id: 10 })
+  })
+
+  it('returns empty array when offset > length', () => {
+    const responses = Array.from({ length: 5 }, (_, i) => ({ id: i }))
+    const result = paginateResponses(responses, 10, 100)
+    expect(result).toHaveLength(0)
+  })
+
+  it('clamps partial last page correctly', () => {
+    const responses = Array.from({ length: 15 }, (_, i) => ({ id: i }))
+    const result = paginateResponses(responses, 10, 10)
+    expect(result).toHaveLength(5)
+  })
+})
+
+// ── Chunk result file naming ───────────────────────────────────────────────
+
+describe('chunk result file path naming', () => {
+  it('chunk-001 < chunk-002 lexicographically (sort order)', () => {
+    const paths = ['chunk-003.json', 'chunk-001.json', 'chunk-002.json']
+    paths.sort()
+    expect(paths[0]).toBe('chunk-001.json')
+    expect(paths[1]).toBe('chunk-002.json')
+    expect(paths[2]).toBe('chunk-003.json')
+  })
+
+  it('chunk-010 sorts after chunk-009', () => {
+    const paths = ['chunk-010.json', 'chunk-009.json']
+    paths.sort()
+    expect(paths[0]).toBe('chunk-009.json')
+    expect(paths[1]).toBe('chunk-010.json')
+  })
+})

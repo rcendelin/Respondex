@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { QueueServiceClient } from '@azure/storage-queue'
 import { BlobStorageService } from '../services/storage.js'
 import { SimulationConfigSchema } from '@respondex/shared'
-import type { Person, SimulationConfig, SimulationChunkMessage, SimulationMeta } from '@respondex/shared'
+import type { Person, SimulationConfig, SimulationChunkMessage, SimulationMeta, SimulationResponse } from '@respondex/shared'
 import { SimulationStatus } from '@respondex/shared'
 import { NotFoundError, ValidationError, errorResponse, requireUUID } from '../lib/errors.js'
 
@@ -256,6 +256,55 @@ async function deleteSimulation(req: HttpRequest, ctx: InvocationContext): Promi
   }
 }
 
+// ── GET /api/simulations/{id}/results ─────────────────────────────────────
+async function getSimulationResults(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const id = requireUUID(req.params['id'])
+    const svc = storage()
+    const metaExists = await svc.blobExists(`data/simulations/${id}/meta.json`)
+    if (!metaExists) throw new NotFoundError('Simulace nebyla nalezena')
+
+    const meta = await svc.readJson<SimulationMeta>(`data/simulations/${id}/meta.json`)
+
+    // List all chunk result files
+    const blobs = await svc.listBlobs(`data/simulations/${id}/responses/`)
+    const chunkBlobs = blobs.filter((b) => b.includes('/responses/chunk-') && b.endsWith('.json'))
+    chunkBlobs.sort() // sort by chunk number (chunk-001, chunk-002, ...)
+
+    // Load and merge all chunk results
+    const chunkArrays = await Promise.all(
+      chunkBlobs.map((path) =>
+        svc.readJson<SimulationResponse[]>(path).catch(() => [] as SimulationResponse[])
+      )
+    )
+    const allResponses = chunkArrays.flat()
+
+    // Optional pagination
+    const url = new URL(req.url)
+    const limitParam = url.searchParams.get('limit')
+    const offsetParam = url.searchParams.get('offset')
+    const limit = limitParam !== null ? Math.min(Math.max(Number(limitParam), 1), 1000) : undefined
+    const offset = offsetParam !== null ? Math.max(Number(offsetParam), 0) : 0
+
+    const pagedResponses = limit !== undefined
+      ? allResponses.slice(offset, offset + limit)
+      : allResponses.slice(offset)
+
+    return {
+      status: 200,
+      jsonBody: {
+        simulation_id: id,
+        status: meta.status,
+        total_responses: allResponses.length,
+        responses: pagedResponses,
+        ...(limit !== undefined ? { limit, offset } : {}),
+      },
+    }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Route registrations ────────────────────────────────────────────────────
 app.http('createSimulation', {
   methods: ['POST'],
@@ -290,4 +339,11 @@ app.http('deleteSimulation', {
   authLevel: 'anonymous',
   route: 'simulations/{id}',
   handler: deleteSimulation,
+})
+
+app.http('getSimulationResults', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'simulations/{id}/results',
+  handler: getSimulationResults,
 })
