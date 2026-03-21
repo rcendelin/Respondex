@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildPrompt, isRefusal } from '../prompt-builder.js'
-import { Gender, Education, Strategy, QuestionType } from '@respondex/shared'
+import { Gender, Education, Region, Strategy, QuestionType } from '@respondex/shared'
 import type { Person, Question } from '@respondex/shared'
 
 const minimalPerson: Person = {
@@ -15,7 +15,7 @@ const fullPerson: Person = {
   gender: Gender.FEMALE,
   demographics: {
     education: Education.UNIVERSITY,
-    region: 'Praha',
+    region: Region.PRAGUE,
   },
   life_story: 'Celý život pracuji jako lékařka. Mám dvě děti.',
 }

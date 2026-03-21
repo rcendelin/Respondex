@@ -8,8 +8,11 @@ export const SimulationConfigSchema = z.object({
     errorMap: () => ({ message: 'Strategie musí být A, B, C, D, E nebo F' }),
   }),
   model: z
-    .string()
-    .min(1, 'Model nesmí být prázdný')
+    .nativeEnum(SupportedModel, {
+      errorMap: () => ({
+        message: `Model musí být jeden z: ${Object.values(SupportedModel).join(', ')}`,
+      }),
+    })
     .default(SupportedModel.GPT_4O_MINI),
   temperature: z
     .number()
@@ -23,7 +26,7 @@ export const SimulationConfigSchema = z.object({
     .max(10, 'Maximální počet runs je 10')
     .default(3),
   run_calibration: z.boolean().optional().default(false),
-  ensemble_models: z.array(z.string().min(1)).optional(),
+  ensemble_models: z.array(z.string().min(1).max(100)).max(5).optional(),
 })
 
 export const SimulationChunkMessageSchema = z.object({

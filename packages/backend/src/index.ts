@@ -2,3 +2,4 @@
 import './functions/populations.js'
 import './functions/questionnaires.js'
 import './functions/templates.js'
+import './functions/simulations.js'
