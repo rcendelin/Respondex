@@ -12,7 +12,8 @@
       "@respondex/shared": ["../shared/src/index.ts"],
       "@respondex/shared/*": ["../shared/src/*"]
     },
-    "noEmit": true
+    "noEmit": true,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"]
