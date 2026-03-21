@@ -14,6 +14,13 @@ export class ValidationError extends Error {
   }
 }
 
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConflictError'
+  }
+}
+
 // UUID v4 pattern — all IDs in Respondex are generated with randomUUID()
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -43,6 +50,9 @@ export function errorResponse(err: unknown, ctx?: InvocationContext): HttpRespon
   }
   if (err instanceof ValidationError) {
     return { status: 400, jsonBody: { error: err.message } }
+  }
+  if (err instanceof ConflictError) {
+    return { status: 409, jsonBody: { error: err.message } }
   }
   // Log internal error details (Azure SDK messages, stack traces) without leaking them
   const internalMessage = err instanceof Error ? err.message : String(err)
