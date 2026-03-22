@@ -64,7 +64,7 @@ jobs:
           skip_app_build: true
 
       - name: Deploy Backend to Azure Functions
-        uses: Azure/functions-action@fd80521afbba9e0559b9a55b3bce7b8d8f2b9d2e # v1.5.2
+        uses: Azure/functions-action@4c708484940839593f2d74df7d2767df709ac3c2 # v1.5.2
         with:
           app-name: ${{ env.FUNCTION_APP_NAME }}
           package: packages/backend/dist
