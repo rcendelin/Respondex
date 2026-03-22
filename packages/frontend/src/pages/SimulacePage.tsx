@@ -220,11 +220,23 @@ export function SimulacePage() {
       const updates = await Promise.allSettled(
         running.map((s) => getSimulationStatus(s.id))
       )
+      // Build a lookup map: simulation_id → updated status fields
+      const statusMap = new Map<string, typeof updates[number]>()
+      running.forEach((s, i) => { statusMap.set(s.id, updates[i]!) })
+
       setSimulations((prev) =>
-        prev.map((s, i) => {
-          const update = updates[i]
-          if (update?.status === 'fulfilled') return update.value
-          return s
+        prev.map((s) => {
+          const update = statusMap.get(s.id)
+          if (!update || update.status !== 'fulfilled') return s
+          const st = update.value as { simulation_id?: string; status?: string; total_chunks?: number; completed_chunks?: number; progress_pct?: number }
+          // /status returns simulation_id + partial fields — merge into existing sim to keep id/config intact
+          return {
+            ...s,
+            status: (st.status ?? s.status) as typeof s.status,
+            total_chunks: st.total_chunks ?? s.total_chunks,
+            completed_chunks: st.completed_chunks ?? s.completed_chunks,
+            progress_pct: st.progress_pct ?? s.progress_pct,
+          }
         })
       )
     }, 5000)
