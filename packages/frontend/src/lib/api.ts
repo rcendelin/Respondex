@@ -40,11 +40,16 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, _attempt = 0): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   })
+  // 503 = Azure Functions cold start — retry up to 3× with backoff
+  if (res.status === 503 && _attempt < 3) {
+    await new Promise((r) => setTimeout(r, 2000 * (_attempt + 1)))
+    return request<T>(path, init, _attempt + 1)
+  }
   if (!res.ok) {
     let message = `HTTP ${res.status}`
     try {

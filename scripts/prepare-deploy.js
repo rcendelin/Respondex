@@ -55,11 +55,15 @@ delete merged.dependencies['@respondex/shared']
 fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify(merged, null, 2))
 console.log('✓ Written package.json (merged backend + shared deps, no workspace:*)')
 
-// 5. npm install prod deps
-console.log('→ Running npm install --omit=dev ...')
-execFileSync('npm', ['install', '--omit=dev', '--ignore-scripts'], {
+// 5. Install prod deps
+// On Windows, npm/npx are .cmd files — execFileSync needs shell:true or the .cmd suffix.
+// On Linux CI they are plain executables. Use shell:true to handle both.
+console.log('→ Running npm install --omit=dev --legacy-peer-deps ...')
+execFileSync('npm', ['install', '--omit=dev', '--ignore-scripts', '--legacy-peer-deps'], {
   cwd: outDir,
   stdio: 'inherit',
+  shell: true,
+  env: { ...process.env, npm_config_fund: 'false', npm_config_audit: 'false' },
 })
 console.log('✓ node_modules installed')
 
