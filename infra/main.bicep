@@ -261,16 +261,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
-// Grant Function App Managed Identity access to Key Vault (Key Vault Secrets User)
-resource functionAppKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, functionApp.id, '4633458b-17de-408a-b874-0445c86b69e0')
-  scope: keyVault
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e0')
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
+// NOTE: Key Vault role assignment is done manually after deployment (see README / deployment guide).
+// Run after deploy:
+//   $principalId = az functionapp identity show --name func-respondex-dev --resource-group rg-respondex --query principalId -o tsv
+//   $kvScope = az keyvault show --name kv-respondex-dev --resource-group rg-respondex --query id -o tsv
+//   az role assignment create --assignee $principalId --role "Key Vault Secrets User" --scope $kvScope
 
 // ── Azure Static Web Apps ─────────────────────────────────────────────────────
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
@@ -283,7 +278,7 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   }
   properties: {
     repositoryUrl: 'https://github.com/rcendelin/Respondex'
-    branch: 'master'
+    branch: 'main'
     buildProperties: {
       appLocation: 'packages/frontend'
       outputLocation: 'dist'
