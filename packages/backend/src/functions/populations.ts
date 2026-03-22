@@ -388,8 +388,29 @@ PRAVIDLA:
 4. Vyhni se stereotypům a klišé — buď originální a specifický.
 5. Odpovídej POUZE JSON objektem: {"life_story": "<příběh>"}`
 
-async function enrichPersonLifeStory(person: Person, model: string, openai: OpenAIService): Promise<string | null> {
-  // Build persona description from demographics
+const VALIDATE_SYSTEM_PROMPT = `Jsi kritický reviewer realistisnosti životních příběhů pro výzkumné účely.
+Dostaneš sociodemografický profil osoby a vygenerovaný životní příběh. Posouď, zda je příběh realistický a konzistentní.
+
+ZKONTROLUJ zejména:
+- Jsou zájmy, koníčky a hodnoty adekvátní věku a vzdělání osoby?
+- Odpovídá životní styl příjmové skupině a zaměstnaneckému statusu?
+- Je kariérní dráha konzistentní s věkem a vzdělání?
+- Jsou vztahy a rodinné poměry konzistentní s rodinným stavem?
+- Neobsahuje příběh anachronismy nebo sociodemograficky nevěrohodné prvky?
+
+Příklady NEKONZISTENCÍ k odhalení:
+- Důchodce aktivně investující do kryptoměn a sledující TikTok trendy
+- 22letý student s 30letou kariérní historií
+- Osoba s nízkým příjmem s luxusními koníčky (jachting, polo)
+- Nezaměstnaný s plným pracovním týdenním harmonogramem
+
+Pokud příběh NENÍ realistický, napiš opravený příběh, který vychází ze stejného profilu, ale je konzistentní.
+
+Odpovídej POUZE JSON objektem:
+{"realistic": true} pokud je příběh v pořádku
+{"realistic": false, "issues": "<stručný popis problémů>", "life_story": "<opravený příběh>"} pokud ne`
+
+function buildProfileLines(person: Person): string[] {
   const lines: string[] = [
     `Věk: ${person.age} let`,
     `Pohlaví: ${person.gender}`,
@@ -401,25 +422,60 @@ async function enrichPersonLifeStory(person: Person, model: string, openai: Open
     lines.push(`Partner/ka: ${person.demographics.has_partner ? 'Ano' : 'Ne'}`)
   if (person.demographics?.income_level) lines.push(`Příjem: ${person.demographics.income_level}`)
   if (person.demographics?.region) lines.push(`Kraj: ${person.demographics.region}`)
+  return lines
+}
 
-  const userPrompt = `Na základě tohoto profilu napiš krátký životní příběh:\n${lines.join('\n')}`
+async function enrichPersonLifeStory(
+  person: Person,
+  model: string,
+  openai: OpenAIService,
+  ctx: InvocationContext,
+): Promise<string | null> {
+  const profileLines = buildProfileLines(person)
+  const profileText = profileLines.join('\n')
 
+  // Step 1: Generate the life story
+  let story: string
   try {
     const result = await openai.callModel({
       model: model as import('@respondex/shared').SupportedModel,
       systemPrompt: ENRICH_SYSTEM_PROMPT,
-      userPrompt,
+      userPrompt: `Na základě tohoto profilu napiš krátký životní příběh:\n${profileText}`,
       temperature: 0.9,
     })
-
     const parsed = JSON.parse(result.content) as { life_story?: string }
-    const story = parsed.life_story?.trim()
-    if (!story || story.length < 20) return null
-    // Cap at 2000 chars to match MAX_LIFE_STORY_CHARS in prompt-builder
-    return story.substring(0, 2000)
+    const candidate = parsed.life_story?.trim()
+    if (!candidate || candidate.length < 20) return null
+    story = candidate
   } catch {
     return null
   }
+
+  // Step 2: Validate realism — use a slightly lower temperature for the critic
+  try {
+    const validatePrompt = `Profil osoby:\n${profileText}\n\nVygenerovaný příběh:\n${story}`
+    const validation = await openai.callModel({
+      model: model as import('@respondex/shared').SupportedModel,
+      systemPrompt: VALIDATE_SYSTEM_PROMPT,
+      userPrompt: validatePrompt,
+      temperature: 0.3,
+    })
+    const vParsed = JSON.parse(validation.content) as {
+      realistic: boolean
+      issues?: string
+      life_story?: string
+    }
+    if (!vParsed.realistic && vParsed.life_story?.trim()) {
+      ctx.log(`Person ${person.id}: story rewritten — ${vParsed.issues ?? 'unrealistic'}`)
+      story = vParsed.life_story.trim()
+    }
+  } catch {
+    // Validation step failed — keep the original story rather than losing it
+    ctx.warn(`Person ${person.id}: validation step failed, keeping original story`)
+  }
+
+  // Cap at 2000 chars to match MAX_LIFE_STORY_CHARS in prompt-builder
+  return story.substring(0, 2000)
 }
 
 async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
@@ -455,7 +511,7 @@ async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promi
     for (let i = 0; i < toEnrich.length; i += BATCH_SIZE) {
       const batch = toEnrich.slice(i, i + BATCH_SIZE)
       const results = await Promise.allSettled(
-        batch.map((p) => enrichPersonLifeStory(p, model, openai))
+        batch.map((p) => enrichPersonLifeStory(p, model, openai, ctx))
       )
 
       for (let j = 0; j < batch.length; j++) {
