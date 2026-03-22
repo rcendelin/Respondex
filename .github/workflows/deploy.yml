@@ -56,12 +56,15 @@ jobs:
       - name: Prepare backend deployment package
         run: |
           mkdir -p deploy-backend
+          # Compiled JS (shared is compiled inline by tsconfig rootDirs)
           cp -r packages/backend/dist/* deploy-backend/
+          # Azure Functions runtime config
           cp packages/backend/host.json deploy-backend/
-          cp packages/backend/package.json deploy-backend/
-          cd deploy-backend
-          npm install --omit=dev --ignore-scripts
-          cd ..
+          # node_modules: copy from pnpm virtual store (excludes workspace:* packages)
+          mkdir -p deploy-backend/node_modules
+          cp -r packages/backend/node_modules/. deploy-backend/node_modules/
+          # Remove symlinked workspace packages (already compiled inline)
+          rm -rf deploy-backend/node_modules/@respondex
 
       - name: Deploy Frontend to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
