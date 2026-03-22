@@ -149,6 +149,24 @@ export function generatePopulation(id: string, params: GenerateParams): Promise<
   })
 }
 
+export interface EnrichParams {
+  model: string
+  only_missing: boolean
+}
+
+export interface EnrichResult {
+  enriched: number
+  skipped: number
+  failed: number
+}
+
+export function enrichPopulation(id: string, params: EnrichParams): Promise<EnrichResult> {
+  return request(`/populations/${encodeURIComponent(id)}/enrich`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
 // ── Questionnaires ─────────────────────────────────────────────────────────
 
 export type QuestionnaireListItem = QuestionnaireMeta

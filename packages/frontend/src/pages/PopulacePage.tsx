@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Users, Plus, Download, Trash2, FileUp, Wand2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Users, Plus, Download, Trash2, FileUp, Wand2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import {
   getPopulations, createPopulation, exportPopulation, deletePopulation, downloadTemplate,
-  getPersons, generatePopulation,
+  getPersons, generatePopulation, enrichPopulation,
   type PopulationListItem, type GenerateParams,
 } from '../lib/api'
 import type { Person } from '@respondex/shared'
@@ -288,6 +288,113 @@ function GenerateDialog({ populationId, open, onClose, onGenerated }: GenerateDi
   )
 }
 
+// ── Enrich dialog ─────────────────────────────────────────────────────────
+
+interface EnrichDialogProps {
+  populationId: string
+  totalPersons: number
+  missingStories: number
+  open: boolean
+  onClose: () => void
+  onEnriched: (result: { enriched: number; failed: number }) => void
+}
+
+const AI_MODELS = [
+  { value: 'gpt-4o-mini', label: 'GPT-4o mini (rychlý, ekonomický)' },
+  { value: 'gpt-4o', label: 'GPT-4o (pomalejší, vyšší kvalita)' },
+]
+
+function EnrichDialog({ populationId, totalPersons, missingStories, open, onClose, onEnriched }: EnrichDialogProps) {
+  const [model, setModel] = useState('gpt-4o-mini')
+  const [onlyMissing, setOnlyMissing] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() { setModel('gpt-4o-mini'); setOnlyMissing(true); setError(null); setLoading(false) }
+  function handleClose() { reset(); onClose() }
+
+  const count = onlyMissing ? missingStories : totalPersons
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (count === 0) { setError('Žádné osoby ke zpracování.'); return }
+    if (count > 100) {
+      setError(`Příliš mnoho osob (${count}). Maximum je 100 najednou. Použijte možnost "Jen chybějící".`)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await enrichPopulation(populationId, { model, only_missing: onlyMissing })
+      reset()
+      onEnriched({ enriched: result.enriched, failed: result.failed })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Neočekávaná chyba.')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Generovat životní příběhy (AI)</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            OpenAI vygeneruje krátký autentický životní příběh pro každou osobu na základě jejích
+            demografických atributů. Příběhy zlepší kvalitu simulací při použití Strategie C.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="enrich-model">Model</Label>
+            <Select value={model} onValueChange={setModel} disabled={loading}>
+              <SelectTrigger id="enrich-model">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50">
+            <input
+              id="enrich-only-missing"
+              type="checkbox"
+              checked={onlyMissing}
+              onChange={(e) => setOnlyMissing(e.target.checked)}
+              disabled={loading}
+              className="h-4 w-4"
+            />
+            <div>
+              <Label htmlFor="enrich-only-missing" className="cursor-pointer">
+                Jen osoby bez příběhu
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {onlyMissing
+                  ? `${missingStories} z ${totalPersons} osob nemá příběh`
+                  : `Přepíše příběhy u všech ${totalPersons} osob`}
+              </p>
+            </div>
+          </div>
+          <div className="text-sm font-medium">
+            Bude zpracováno: <span className={count > 100 ? 'text-destructive' : ''}>{count} osob</span>
+            {count > 100 && <span className="text-destructive text-xs ml-1">(max 100)</span>}
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>Zrušit</Button>
+            <Button type="submit" disabled={loading || count === 0}>
+              {loading ? 'Generuji příběhy…' : `Generovat (${count})`}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Population detail dialog ───────────────────────────────────────────────
 
 interface PopulationDetailDialogProps {
@@ -342,6 +449,9 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
   const [loadingPersons, setLoadingPersons] = useState(false)
   const [personsError, setPersonsError] = useState<string | null>(null)
   const [generateOpen, setGenerateOpen] = useState(false)
+  const [enrichOpen, setEnrichOpen] = useState(false)
+  const [enrichResult, setEnrichResult] = useState<{ enriched: number; failed: number } | null>(null)
+  const [missingStories, setMissingStories] = useState(0)
   const loadedForRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -355,7 +465,16 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
     setPersonsError(null)
     getPersons(population.id, offset, PAGE_SIZE)
       .then((page) => {
-        if (!cancelled) { setPersons(page.persons); setTotal(page.total) }
+        if (!cancelled) {
+          setPersons(page.persons)
+          setTotal(page.total)
+          // Estimate missing stories from current page; reset when offset changes
+          if (offset === 0) {
+            const missingOnPage = page.persons.filter((p) => !p.life_story).length
+            const ratio = page.persons.length > 0 ? missingOnPage / page.persons.length : 0
+            setMissingStories(Math.round(ratio * page.total))
+          }
+        }
       })
       .catch((err) => {
         if (!cancelled) setPersonsError(err instanceof Error ? err.message : 'Chyba při načítání osob.')
@@ -366,8 +485,18 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
 
   function handleClose() {
     setPersons([]); setTotal(0); setOffset(0); setPersonsError(null)
+    setEnrichResult(null); setMissingStories(0)
     loadedForRef.current = null
     onClose()
+  }
+
+  function handleEnriched(result: { enriched: number; failed: number }) {
+    setEnrichOpen(false)
+    setEnrichResult(result)
+    // Re-fetch persons to show updated life_story counts
+    loadedForRef.current = null
+    setOffset(0)
+    onPopulationChanged()
   }
 
   function handleGenerated() {
@@ -399,12 +528,31 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
                   <span>Vytvořeno {population ? formatDate(population.created_at) : ''}</span>
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)} className="flex-shrink-0">
-                <Wand2 className="h-4 w-4 mr-1.5" />
-                Generovat
-              </Button>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)}>
+                  <Wand2 className="h-4 w-4 mr-1.5" />
+                  Generovat
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setEnrichOpen(true)} disabled={total === 0}>
+                  <Sparkles className="h-4 w-4 mr-1.5" />
+                  AI příběhy
+                </Button>
+              </div>
             </div>
           </DialogHeader>
+
+          {/* Enrich result banner */}
+          {enrichResult && (
+            <div className="px-6 py-2 bg-green-50 border-b border-green-200 flex items-center justify-between">
+              <p className="text-sm text-green-800">
+                ✓ Vygenerováno {enrichResult.enriched} životních příběhů
+                {enrichResult.failed > 0 && ` (${enrichResult.failed} selhalo)`}
+              </p>
+              <button className="text-xs text-green-600 underline" onClick={() => setEnrichResult(null)}>
+                Zavřít
+              </button>
+            </div>
+          )}
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -452,13 +600,23 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
         </DialogContent>
       </Dialog>
 
-      {/* Generate sub-dialog — sibling to avoid nested portal focus-trap conflict */}
+      {/* Sub-dialogs — siblings to avoid nested portal focus-trap conflict */}
       {population && (
         <GenerateDialog
           populationId={population.id}
           open={generateOpen}
           onClose={() => setGenerateOpen(false)}
           onGenerated={handleGenerated}
+        />
+      )}
+      {population && (
+        <EnrichDialog
+          populationId={population.id}
+          totalPersons={population.person_count}
+          missingStories={missingStories}
+          open={enrichOpen}
+          onClose={() => setEnrichOpen(false)}
+          onEnriched={handleEnriched}
         />
       )}
     </>

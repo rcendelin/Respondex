@@ -1,6 +1,7 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from '@azure/functions'
 import { randomUUID } from 'crypto'
 import { BlobStorageService } from '../services/storage.js'
+import { OpenAIService } from '../services/openai.js'
 import { parsePopulationXlsx, generatePopulationXlsx } from '@respondex/shared'
 import type { Person, PersonMetadata } from '@respondex/shared'
 import { NotFoundError, ValidationError, errorResponse, requireUUID, requireUploadSize } from '../lib/errors.js'
@@ -371,6 +372,128 @@ async function generatePopulation(req: HttpRequest, ctx: InvocationContext): Pro
   }
 }
 
+// ── POST /api/populations/{id}/enrich ─────────────────────────────────────
+// Generates life_story for persons that don't have one yet using OpenAI.
+// Processes persons in batches of 10 to stay well under the 10-min limit.
+// Request body: { model?: string, only_missing?: boolean }
+// Returns: { enriched: number, skipped: number, failed: number }
+
+const ENRICH_SYSTEM_PROMPT = `Jsi spisovatel krátkých životních příběhů pro výzkumné účely.
+Tvůj úkol: na základě sociodemografického profilu napiš krátký, autentický životní příběh české osoby.
+
+PRAVIDLA:
+1. Příběh musí být v češtině, v 1. nebo 3. osobě, 3–5 vět (80–150 slov).
+2. Příběh musí být konzistentní s profilem (věk, vzdělání, zaměstnání, kraj, rodinný stav).
+3. Používej konkrétní detaily typické pro ČR (město/vesnice, profese, koníčky odpovídající profilu).
+4. Vyhni se stereotypům a klišé — buď originální a specifický.
+5. Odpovídej POUZE JSON objektem: {"life_story": "<příběh>"}`
+
+async function enrichPersonLifeStory(person: Person, model: string, openai: OpenAIService): Promise<string | null> {
+  // Build persona description from demographics
+  const lines: string[] = [
+    `Věk: ${person.age} let`,
+    `Pohlaví: ${person.gender}`,
+  ]
+  if (person.demographics?.education) lines.push(`Vzdělání: ${person.demographics.education}`)
+  if (person.demographics?.employment_status) lines.push(`Zaměstnání: ${person.demographics.employment_status}`)
+  if (person.demographics?.marital_status) lines.push(`Rodinný stav: ${person.demographics.marital_status}`)
+  if (person.demographics?.has_partner !== undefined)
+    lines.push(`Partner/ka: ${person.demographics.has_partner ? 'Ano' : 'Ne'}`)
+  if (person.demographics?.income_level) lines.push(`Příjem: ${person.demographics.income_level}`)
+  if (person.demographics?.region) lines.push(`Kraj: ${person.demographics.region}`)
+
+  const userPrompt = `Na základě tohoto profilu napiš krátký životní příběh:\n${lines.join('\n')}`
+
+  try {
+    const result = await openai.callModel({
+      model: model as import('@respondex/shared').SupportedModel,
+      systemPrompt: ENRICH_SYSTEM_PROMPT,
+      userPrompt,
+      temperature: 0.9,
+    })
+
+    const parsed = JSON.parse(result.content) as { life_story?: string }
+    const story = parsed.life_story?.trim()
+    if (!story || story.length < 20) return null
+    // Cap at 2000 chars to match MAX_LIFE_STORY_CHARS in prompt-builder
+    return story.substring(0, 2000)
+  } catch {
+    return null
+  }
+}
+
+async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const id = requireUUID(req.params['id'])
+    const svc = storage()
+    const metaExists = await svc.blobExists(`data/populations/${id}/meta.json`)
+    if (!metaExists) throw new NotFoundError(`Populace "${id}" nebyla nalezena`)
+
+    const body = await req.json() as { model?: unknown; only_missing?: unknown }
+    const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'gpt-4o-mini'
+    const onlyMissing = body.only_missing !== false // default true
+
+    const persons = await svc.readJson<Person[]>(`data/populations/${id}/persons.json`)
+    const toEnrich = onlyMissing ? persons.filter((p) => !p.life_story) : persons
+
+    if (toEnrich.length === 0) {
+      return { status: 200, jsonBody: { enriched: 0, skipped: persons.length, failed: 0 } }
+    }
+
+    // Cap at 100 persons per call to stay under 10-min Azure Function timeout
+    const MAX_PER_CALL = 100
+    if (toEnrich.length > MAX_PER_CALL) {
+      throw new ValidationError(`Příliš mnoho osob k obohacení najednou (${toEnrich.length}). Maximum je ${MAX_PER_CALL}. Použijte parametr "only_missing": true nebo nejprve zmenšete populaci.`)
+    }
+
+    const openai = new OpenAIService()
+    let enriched = 0
+    let failed = 0
+
+    // Process in batches of 10 concurrent requests
+    const BATCH_SIZE = 10
+    for (let i = 0; i < toEnrich.length; i += BATCH_SIZE) {
+      const batch = toEnrich.slice(i, i + BATCH_SIZE)
+      const results = await Promise.allSettled(
+        batch.map((p) => enrichPersonLifeStory(p, model, openai))
+      )
+
+      for (let j = 0; j < batch.length; j++) {
+        const person = batch[j]
+        const result = results[j]
+        if (!person || !result) continue
+
+        if (result.status === 'fulfilled' && result.value) {
+          // Find and update the person in the original array
+          const idx = persons.findIndex((p) => p.id === person.id)
+          if (idx >= 0) {
+            persons[idx] = { ...persons[idx]!, life_story: result.value }
+            enriched++
+          }
+        } else {
+          failed++
+          ctx.warn(`Failed to enrich person ${person.id}`)
+        }
+      }
+    }
+
+    // Persist updated persons
+    await svc.writeJson<Person[]>(`data/populations/${id}/persons.json`, persons)
+    ctx.log(`Enriched ${enriched} persons for population ${id}, failed: ${failed}`)
+
+    return {
+      status: 200,
+      jsonBody: {
+        enriched,
+        skipped: persons.length - toEnrich.length,
+        failed,
+      },
+    }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Register routes ────────────────────────────────────────────────────────
 app.http('populations-create', {
   methods: ['POST'],
@@ -426,4 +549,11 @@ app.http('populations-generate', {
   route: 'populations/{id}/generate',
   authLevel: 'anonymous',
   handler: generatePopulation,
+})
+
+app.http('populations-enrich', {
+  methods: ['POST'],
+  route: 'populations/{id}/enrich',
+  authLevel: 'anonymous',
+  handler: enrichPopulation,
 })
