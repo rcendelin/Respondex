@@ -134,12 +134,12 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   const modelOptions = Object.values(SupportedModel).map((m) => ({ value: m, label: m }))
 
   const varianceModeOptions = [
-    { value: VarianceMode.STANDARD, label: 'Standardní (původní)' },
-    { value: VarianceMode.ENHANCED, label: 'Rozšířený (kognitivní profily)' },
-    { value: VarianceMode.TWO_STEP, label: 'Dvoustupňový (+ probe kompetence)' },
-    { value: VarianceMode.NUMERACY_BEHAVIORAL, label: 'PIAAC Behaviorální (Alg. 1)' },
-    { value: VarianceMode.IRT_MODULATED, label: 'IRT Modulace (Alg. 2)' },
-    { value: VarianceMode.DLCE, label: 'DLCE Kalibrace (Alg. 3)' },
+    { value: VarianceMode.STANDARD, label: 'Standardní', desc: 'Pouze demografický profil, bez kognitivních úprav. Baseline pro srovnání.' },
+    { value: VarianceMode.ENHANCED, label: 'Rozšířený', desc: 'Přidává kognitivní profil podle vzdělání (5 úrovní). Ovlivňuje numerické otázky.' },
+    { value: VarianceMode.TWO_STEP, label: 'Dvoustupňový', desc: 'Extra LLM volání odhadne kompetenci respondenta (dražší, 2× tokenů na num. otázku).' },
+    { value: VarianceMode.NUMERACY_BEHAVIORAL, label: 'PIAAC Behaviorální', desc: 'PIAAC numeracy úroveň → 8 behaviorálních dimenzí (satisficing, primacy bias...) specifických pro typ otázky. Krosnick (1991).' },
+    { value: VarianceMode.IRT_MODULATED, label: 'IRT Modulace', desc: 'IRT 2PL model: P(správně) = f(schopnost × obtížnost otázky). Nahrazuje TWO_STEP bez extra LLM volání. Liu et al. (2025).' },
+    { value: VarianceMode.DLCE, label: 'DLCE Kalibrace', desc: 'IRT prompty + post-hoc korekce distribuce: expanze variance (Bisbee: LLM má 50% reálné SD) + koherenční kontrola. Cao et al. (2025).' },
   ]
 
   return (
@@ -220,34 +220,42 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
               </label>
             </div>
             {batchMode ? (
-              <div className="space-y-1 border rounded-md p-2">
+              <div className="space-y-0.5 border rounded-md p-2">
                 {varianceModeOptions.map((v) => (
-                  <label key={v.value} className="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-accent rounded px-1">
+                  <label key={v.value} className="flex items-start gap-2 py-1.5 cursor-pointer hover:bg-accent rounded px-1.5">
                     <input
                       type="checkbox"
                       checked={batchModes.has(v.value)}
                       onChange={() => toggleBatchMode(v.value)}
                       disabled={loading}
-                      className="rounded border-gray-300"
+                      className="rounded border-gray-300 mt-0.5"
                     />
-                    <span className="text-sm">{v.label}</span>
+                    <div>
+                      <span className="text-sm font-medium">{v.label}</span>
+                      <p className="text-xs text-muted-foreground leading-snug">{v.desc}</p>
+                    </div>
                   </label>
                 ))}
                 {batchModes.size > 0 && (
-                  <p className="text-xs text-muted-foreground pt-1">
-                    Spustí {batchModes.size} simulací paralelně se stejným nastavením, jen s jiným režimem.
+                  <p className="text-xs text-muted-foreground pt-1 px-1">
+                    Spustí {batchModes.size} simulací se stejným nastavením, jen s jiným režimem.
                   </p>
                 )}
               </div>
             ) : (
-              <Select value={varianceMode} onValueChange={setVarianceMode} disabled={loading}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {varianceModeOptions.map((v) => (
-                    <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Select value={varianceMode} onValueChange={setVarianceMode} disabled={loading}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {varianceModeOptions.map((v) => (
+                      <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {varianceModeOptions.find((v) => v.value === varianceMode)?.desc}
+                </p>
+              </>
             )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
