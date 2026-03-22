@@ -60,6 +60,19 @@ describe('parsePopulationXlsx', () => {
 
   it('fails on missing required columns', () => {
     const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet([{ Jmeno: 'Test', 'Věk': 30 }])
+    XLSX.utils.book_append_sheet(wb, ws, 'Osoby')
+    const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer)
+
+    const result = parsePopulationXlsx(buf)
+    expect(result.success).toBe(false)
+    expect(result.errors.some((e) => e.column === 'ID')).toBe(true)
+    // Either new "Pohlaví" or legacy "Pohlavi" column name missing
+    expect(result.errors.some((e) => e.message.includes('Pohlaví') || e.message.includes('Pohlavi'))).toBe(true)
+  })
+
+  it('fails on missing required columns (legacy names)', () => {
+    const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.json_to_sheet([{ Jmeno: 'Test', Vek: 30 }])
     XLSX.utils.book_append_sheet(wb, ws, 'Osoby')
     const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer)
@@ -67,10 +80,20 @@ describe('parsePopulationXlsx', () => {
     const result = parsePopulationXlsx(buf)
     expect(result.success).toBe(false)
     expect(result.errors.some((e) => e.column === 'ID')).toBe(true)
-    expect(result.errors.some((e) => e.column === 'Pohlavi')).toBe(true)
   })
 
-  it('fails on invalid age', () => {
+  it('fails on invalid age (new column names)', () => {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet([{ ID: 'T001', 'Věk': 15, 'Pohlaví': 'Muž' }])
+    XLSX.utils.book_append_sheet(wb, ws, 'Osoby')
+    const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer)
+
+    const result = parsePopulationXlsx(buf)
+    expect(result.success).toBe(false)
+    expect(result.errors.some((e) => e.message.includes('18'))).toBe(true)
+  })
+
+  it('fails on invalid age (legacy column names)', () => {
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.json_to_sheet([{ ID: 'T001', Vek: 15, Pohlavi: 'Muž' }])
     XLSX.utils.book_append_sheet(wb, ws, 'Osoby')
@@ -81,7 +104,18 @@ describe('parsePopulationXlsx', () => {
     expect(result.errors.some((e) => e.message.includes('18'))).toBe(true)
   })
 
-  it('fails on invalid gender', () => {
+  it('fails on invalid gender (new column names)', () => {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet([{ ID: 'T001', 'Věk': 30, 'Pohlaví': 'Unknown' }])
+    XLSX.utils.book_append_sheet(wb, ws, 'Osoby')
+    const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer)
+
+    const result = parsePopulationXlsx(buf)
+    expect(result.success).toBe(false)
+    expect(result.errors.some((e) => e.column === 'Pohlaví')).toBe(true)
+  })
+
+  it('fails on invalid gender (legacy column names)', () => {
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.json_to_sheet([{ ID: 'T001', Vek: 30, Pohlavi: 'Unknown' }])
     XLSX.utils.book_append_sheet(wb, ws, 'Osoby')
@@ -89,7 +123,7 @@ describe('parsePopulationXlsx', () => {
 
     const result = parsePopulationXlsx(buf)
     expect(result.success).toBe(false)
-    expect(result.errors.some((e) => e.column === 'Pohlavi')).toBe(true)
+    expect(result.errors.some((e) => e.column === 'Pohlaví')).toBe(true)
   })
 
   it('roundtrip: import → export → import produces identical data', () => {

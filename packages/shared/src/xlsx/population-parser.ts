@@ -10,34 +10,38 @@ import {
 } from '../types/person.js'
 import { PersonSchema } from '../validation/person.schema.js'
 import type { ParseResult, ParseError } from './parse-result.js'
-import { parseSuccess, parseFailure } from './parse-result.js'
+import { parseFailure } from './parse-result.js'
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
 const MAX_ROWS = 10_000
 
-// Known column names and their mappings to Person fields
-const REQUIRED_COLUMNS = ['ID', 'Vek', 'Pohlavi'] as const
-const KNOWN_COLUMNS: Record<string, keyof Person | keyof Demographics | 'skip'> = {
+type FieldName = keyof Person | keyof Demographics | 'skip'
+
+// Map of all accepted column names (new human-readable + legacy technical) to field names
+const KNOWN_COLUMNS: Record<string, FieldName> = {
+  // New human-readable Czech names (preferred)
   ID: 'id',
+  'Věk': 'age',
+  'Pohlaví': 'gender',
+  'Vzdělání': 'education',
+  'Stav': 'marital_status',
+  'Partner': 'has_partner',
+  'Status': 'employment_status',
+  'Příjem': 'income_level',
+  'Kraj': 'region',
+  'Životní příběh': 'life_story',
+  // Legacy technical names (backward compatibility)
   Vek: 'age',
   Pohlavi: 'gender',
   Vzdelani: 'education',
   RodinnyStav: 'marital_status',
   MaPartnera: 'has_partner',
-  ZaměstnaneckyStatus: 'employment_status',
+  ZamestnaneckyStatus: 'employment_status',
+  ZaměstnaneckyStatus: 'employment_status', // legacy variant with diacritic
   PrijmoveRozpeti: 'income_level',
-  Kraj: 'region',
   ZivotniPribeh: 'life_story',
 }
 
-const DEMOGRAPHIC_FIELDS = new Set([
-  'education',
-  'marital_status',
-  'has_partner',
-  'employment_status',
-  'income_level',
-  'region',
-])
 
 function toGender(val: string, row: number): { value?: Gender; error?: ParseError } {
   const normalized = val.trim()
@@ -46,7 +50,7 @@ function toGender(val: string, row: number): { value?: Gender; error?: ParseErro
   return {
     error: {
       row,
-      column: 'Pohlavi',
+      column: 'Pohlaví',
       message: `Řádek ${row}: Pohlaví musí být "Muž" nebo "Žena", nalezeno: "${normalized}"`,
     },
   }
@@ -78,8 +82,21 @@ function toEnum<T extends string>(
 }
 
 /**
+ * Find actual header name in row for a given field name.
+ * Handles both new Czech names and legacy technical names.
+ */
+function findColumnForField(headers: string[], fieldName: FieldName): string | undefined {
+  for (const [col, fn] of Object.entries(KNOWN_COLUMNS)) {
+    if (fn === fieldName && headers.includes(col)) return col
+  }
+  return undefined
+}
+
+/**
  * Parse a population XLSX buffer into an array of Person objects.
  * Sheet must be named "Osoby" (or first sheet).
+ * Accepts both new human-readable column names (Věk, Pohlaví, etc.)
+ * and legacy technical names (Vek, Pohlavi, etc.).
  */
 export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<Person[]> {
   // H1: Limit file size to prevent zip bomb / memory exhaustion DoS
@@ -121,9 +138,17 @@ export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<P
     return parseFailure([{ message: `Soubor obsahuje příliš mnoho řádků. Maximum je ${MAX_ROWS}.` }])
   }
 
-  // Validate required columns exist
+  // Detect headers
   const headers = Object.keys(rows[0] ?? {})
-  const missingRequired = REQUIRED_COLUMNS.filter((col) => !headers.includes(col))
+
+  // Validate required columns — each required field must have at least one accepted column name present
+  const missingRequired: string[] = []
+  const ageCol = findColumnForField(headers, 'age')
+  const genderCol = findColumnForField(headers, 'gender')
+  if (!headers.includes('ID')) missingRequired.push('ID')
+  if (!ageCol) missingRequired.push('Věk (nebo Vek)')
+  if (!genderCol) missingRequired.push('Pohlaví (nebo Pohlavi)')
+
   if (missingRequired.length > 0) {
     return parseFailure(
       missingRequired.map((col) => ({
@@ -148,16 +173,16 @@ export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<P
       rowErrors.push({ row: rowNum, column: 'ID', message: `Řádek ${rowNum}: ID nesmí být prázdné` })
     }
 
-    // --- Parse Vek ---
-    const ageRaw = Number(row['Vek'])
+    // --- Parse Věk (or legacy Vek) ---
+    const ageRaw = Number(row[ageCol!])
     if (isNaN(ageRaw) || !Number.isInteger(ageRaw)) {
-      rowErrors.push({ row: rowNum, column: 'Vek', message: `Řádek ${rowNum}: Sloupec "Vek" musí být celé číslo` })
+      rowErrors.push({ row: rowNum, column: ageCol!, message: `Řádek ${rowNum}: Sloupec "${ageCol}" musí být celé číslo` })
     } else if (ageRaw < 18 || ageRaw > 100) {
-      rowErrors.push({ row: rowNum, column: 'Vek', message: `Řádek ${rowNum}: Věk musí být 18–100, nalezeno: ${ageRaw}` })
+      rowErrors.push({ row: rowNum, column: ageCol!, message: `Řádek ${rowNum}: Věk musí být 18–100, nalezeno: ${ageRaw}` })
     }
 
-    // --- Parse Pohlavi ---
-    const genderResult = toGender(String(row['Pohlavi'] ?? ''), rowNum)
+    // --- Parse Pohlaví (or legacy Pohlavi) ---
+    const genderResult = toGender(String(row[genderCol!] ?? ''), rowNum)
     if (genderResult.error) rowErrors.push(genderResult.error)
 
     if (rowErrors.length > 0) {
@@ -166,11 +191,18 @@ export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<P
     }
 
     // --- Parse optional demographic fields ---
+    // Resolve canonical column for each field (new name preferred over legacy) to avoid
+    // double-write when both naming conventions appear in the same file.
     const demographics: Demographics = {}
     let hasDemographics = false
 
-    for (const [xlsxCol, fieldName] of Object.entries(KNOWN_COLUMNS)) {
-      if (REQUIRED_COLUMNS.includes(xlsxCol as (typeof REQUIRED_COLUMNS)[number])) continue
+    const optionalFields = [
+      'education', 'marital_status', 'employment_status', 'income_level', 'region', 'has_partner',
+    ] as const
+
+    for (const fieldName of optionalFields) {
+      const xlsxCol = findColumnForField(headers, fieldName)
+      if (!xlsxCol) continue
       const rawVal = row[xlsxCol]
       if (rawVal === undefined || rawVal === null || String(rawVal).trim() === '') continue
 
@@ -228,7 +260,8 @@ export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<P
     }
 
     // --- Build Person object ---
-    const lifeStoryRaw = String(row['ZivotniPribeh'] ?? '').trim()
+    const lifeStoryCol = findColumnForField(headers, 'life_story')
+    const lifeStoryRaw = lifeStoryCol ? String(row[lifeStoryCol] ?? '').trim() : ''
 
     // Use unknown cast to avoid exactOptionalPropertyTypes issues with conditional spread;
     // Zod validation below enforces the correct shape.

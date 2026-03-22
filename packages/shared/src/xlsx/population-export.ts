@@ -12,6 +12,11 @@ function sanitizeForExcel(val: string): string {
   return stripped
 }
 
+// Fixed column names used in export — custom fields must not collide with these
+const FIXED_COLUMN_NAMES = new Set([
+  'ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj', 'Životní příběh',
+])
+
 /**
  * Export a population to XLSX buffer (mirrors the import format).
  * Resulting file can be re-imported without data loss.
@@ -27,26 +32,28 @@ export function generatePopulationXlsx(persons: Person[], metadata?: Partial<Per
       if (customCount >= MAX_CUSTOM_FIELDS) break
       // Sanitize both key (becomes column header) and string values
       const safeKey = sanitizeForExcel(k)
+      // Skip custom fields that collide with fixed column names to prevent data corruption on roundtrip
+      if (FIXED_COLUMN_NAMES.has(safeKey)) continue
       sanitizedCustom[safeKey] = typeof v === 'string' ? sanitizeForExcel(v) : v
       customCount++
     }
     return {
       ID: sanitizeForExcel(p.id),
-      Vek: p.age,
+      'Věk': p.age,
       // Enum values are sanitized defensively (could come from non-parser sources)
-      Pohlavi: sanitizeForExcel(p.gender),
-      Vzdelani: sanitizeForExcel(p.demographics?.education ?? ''),
-      RodinnyStav: sanitizeForExcel(p.demographics?.marital_status ?? ''),
-      MaPartnera:
+      'Pohlaví': sanitizeForExcel(p.gender),
+      'Vzdělání': sanitizeForExcel(p.demographics?.education ?? ''),
+      'Stav': sanitizeForExcel(p.demographics?.marital_status ?? ''),
+      'Partner':
         p.demographics?.has_partner === undefined
           ? ''
           : p.demographics.has_partner
             ? 'Ano'
             : 'Ne',
-      ZaměstnaneckyStatus: sanitizeForExcel(p.demographics?.employment_status ?? ''),
-      PrijmoveRozpeti: sanitizeForExcel(p.demographics?.income_level ?? ''),
-      Kraj: sanitizeForExcel(p.demographics?.region ?? ''),
-      ZivotniPribeh: p.life_story ? sanitizeForExcel(p.life_story) : '',
+      'Status': sanitizeForExcel(p.demographics?.employment_status ?? ''),
+      'Příjem': sanitizeForExcel(p.demographics?.income_level ?? ''),
+      'Kraj': sanitizeForExcel(p.demographics?.region ?? ''),
+      'Životní příběh': p.life_story ? sanitizeForExcel(p.life_story) : '',
       // Flatten sanitized custom fields (capped at MAX_CUSTOM_FIELDS)
       ...sanitizedCustom,
     }
@@ -65,8 +72,16 @@ export function generatePopulationXlsx(persons: Person[], metadata?: Partial<Per
   const wsMeta = XLSX.utils.json_to_sheet(metaRows)
 
   wsOsoby['!cols'] = [
-    { wch: 8 }, { wch: 6 }, { wch: 8 }, { wch: 18 }, { wch: 20 },
-    { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 20 }, { wch: 60 },
+    { wch: 8 },  // ID
+    { wch: 6 },  // Věk
+    { wch: 8 },  // Pohlaví
+    { wch: 22 }, // Vzdělání
+    { wch: 20 }, // Stav
+    { wch: 8 },  // Partner
+    { wch: 30 }, // Status
+    { wch: 18 }, // Příjem
+    { wch: 20 }, // Kraj
+    { wch: 60 }, // Životní příběh
   ]
 
   XLSX.utils.book_append_sheet(wb, wsOsoby, 'Osoby')
