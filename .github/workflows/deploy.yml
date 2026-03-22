@@ -56,23 +56,31 @@ jobs:
       - name: Prepare backend deployment package
         run: |
           mkdir -p deploy-backend
-          # Compiled JS — preserve dist/backend/src structure (matches main in package.json)
+          # Compiled JS — full dist tree (dist/backend/src + dist/shared)
           cp -r packages/backend/dist deploy-backend/dist
           # Azure Functions runtime config
           cp packages/backend/host.json deploy-backend/
-          # package.json with workspace:* replaced by file path for npm install
+          # package.json without @respondex/shared (compiled inline) and without devDeps
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('packages/backend/package.json','utf8'));
-            // Replace workspace:* with path to built shared package
-            pkg.dependencies['@respondex/shared'] = 'file:../packages/shared';
-            // Remove devDependencies entirely
+            delete pkg.dependencies['@respondex/shared'];
             delete pkg.devDependencies;
             fs.writeFileSync('deploy-backend/package.json', JSON.stringify(pkg, null, 2));
           "
-          cd deploy-backend
-          npm install --omit=dev --ignore-scripts
-          cd ..
+          # Install prod dependencies (no workspace:* left)
+          cd deploy-backend && npm install --omit=dev --ignore-scripts && cd ..
+          # Create shim: @respondex/shared -> compiled shared in dist
+          mkdir -p deploy-backend/node_modules/@respondex/shared
+          node -e "
+            const fs = require('fs');
+            // Find what shared exports
+            const sharedPkg = JSON.parse(fs.readFileSync('packages/shared/package.json','utf8'));
+            const mainEntry = sharedPkg.main || 'dist/index.js';
+            // Write shim package.json pointing to compiled shared output
+            const shim = { name: '@respondex/shared', version: sharedPkg.version || '0.0.1', main: '../../../dist/shared/src/index.js' };
+            fs.writeFileSync('deploy-backend/node_modules/@respondex/shared/package.json', JSON.stringify(shim, null, 2));
+          "
 
       - name: Deploy Frontend to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
