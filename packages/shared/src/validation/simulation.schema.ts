@@ -35,7 +35,7 @@ export const SimulationConfigSchema = z.object({
     .default(3),
   variance_mode: z
     .nativeEnum(VarianceMode, {
-      errorMap: () => ({ message: 'Režim variance musí být standard, enhanced nebo two_step' }),
+      errorMap: () => ({ message: 'Režim variance musí být standard, enhanced, two_step, numeracy_behavioral, irt_modulated nebo dlce' }),
     })
     .optional()
     .default(VarianceMode.STANDARD),

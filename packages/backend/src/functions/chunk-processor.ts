@@ -2,6 +2,8 @@ import { app, type InvocationContext } from '@azure/functions'
 import { BlobStorageService } from '../services/storage.js'
 import { OpenAIService } from '../services/openai.js'
 import { buildPrompt, isRefusal, REFUSAL_FALLBACK, buildCompetenceProbe, extractCompetenceHint, isNumericQuestion } from '../services/prompt-builder.js'
+import { estimateQuestionDifficulty, numeracyToTheta, computeCompetenceProbability, generateIRTHint } from '../services/irt-engine.js'
+import { expandVariance, checkCoherence, buildCalibrationReport } from '../services/calibration.js'
 import { parseModelResponse } from '../services/response-parser.js'
 import type {
   Person,
@@ -168,7 +170,16 @@ async function callWithRefusalRetry(
   const timestamp = new Date().toISOString()
   let { system, user } = buildPrompt(person, question, strategy, varianceMode)
 
-  // Layer 3: Two-step competence probe for numeric questions
+  // Layer 3a: IRT-based competence modulation (Algorithm 2) — zero extra LLM calls
+  if ((varianceMode === VarianceMode.IRT_MODULATED || varianceMode === VarianceMode.DLCE) && isNumericQuestion(question)) {
+    const theta = numeracyToTheta(person.demographics?.numeracy_level)
+    const itemParams = estimateQuestionDifficulty(question)
+    const pCorrect = computeCompetenceProbability(theta, itemParams)
+    const hint = generateIRTHint(pCorrect, person.demographics?.numeracy_level)
+    user = `${user}\n\n${hint}`
+  }
+
+  // Layer 3b: Two-step competence probe for numeric questions (legacy — extra LLM call)
   if (varianceMode === VarianceMode.TWO_STEP && isNumericQuestion(question)) {
     try {
       const probeResult = await openai.callModel({
@@ -312,6 +323,40 @@ async function incrementCompletedChunks(
     ctx.log(
       `Simulation ${simulationId} COMPLETED: ${newCompleted}/${currentMeta.total_chunks} chunks`
     )
+
+    // DLCE post-hoc calibration: run after all chunks are done
+    if (currentMeta.config.variance_mode === VarianceMode.DLCE) {
+      try {
+        ctx.log(`Simulation ${simulationId}: starting DLCE calibration...`)
+        // Load all responses
+        const chunkBlobs = await svc.listBlobs(`data/simulations/${simulationId}/responses/`)
+        const allResponses: import('@respondex/shared').SimulationResponse[] = []
+        for (const blobPath of chunkBlobs) {
+          const chunk = await svc.readJson<import('@respondex/shared').SimulationResponse[]>(blobPath)
+          allResponses.push(...chunk)
+        }
+        // Load questions and persons
+        const questions = await svc.readJson<import('@respondex/shared').Question[]>(
+          `data/questionnaires/${currentMeta.config.questionnaire_id}/questions.json`
+        )
+        const persons = await svc.readJson<import('@respondex/shared').Person[]>(
+          `data/populations/${currentMeta.config.population_id}/persons.json`
+        )
+        // Run calibration
+        const calibrated = expandVariance(allResponses, questions)
+        const report = buildCalibrationReport(simulationId, allResponses, calibrated, questions)
+        const coherence = checkCoherence(allResponses, questions, persons)
+        coherence.simulation_id = simulationId
+        // Save calibrated results
+        await svc.writeJson(`data/simulations/${simulationId}/calibrated/responses.json`, calibrated)
+        await svc.writeJson(`data/simulations/${simulationId}/calibrated/calibration-report.json`, report)
+        await svc.writeJson(`data/simulations/${simulationId}/calibrated/coherence-report.json`, coherence)
+        ctx.log(`Simulation ${simulationId}: DLCE calibration complete — ${report.total_calibrated} responses modified`)
+      } catch (err) {
+        ctx.error(`DLCE calibration failed for ${simulationId}: ${err instanceof Error ? err.message : 'unknown'}`)
+        // Non-fatal: raw results are still available
+      }
+    }
   } else {
     ctx.log(
       `Simulation ${simulationId} progress: ${newCompleted}/${currentMeta.total_chunks} chunks`

@@ -116,6 +116,9 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
     { value: VarianceMode.STANDARD, label: 'Standardní (původní)' },
     { value: VarianceMode.ENHANCED, label: 'Rozšířený (kognitivní profily)' },
     { value: VarianceMode.TWO_STEP, label: 'Dvoustupňový (+ probe kompetence)' },
+    { value: VarianceMode.NUMERACY_BEHAVIORAL, label: 'PIAAC Behaviorální (Alg. 1)' },
+    { value: VarianceMode.IRT_MODULATED, label: 'IRT Modulace (Alg. 2)' },
+    { value: VarianceMode.DLCE, label: 'DLCE Kalibrace (Alg. 3)' },
   ]
 
   return (

@@ -21,6 +21,12 @@ export enum VarianceMode {
   STANDARD = 'standard',
   ENHANCED = 'enhanced',
   TWO_STEP = 'two_step',
+  /** Algorithm 1: PIAAC-based behavioral fingerprint injection (prompt-only, 0 extra calls) */
+  NUMERACY_BEHAVIORAL = 'numeracy_behavioral',
+  /** Algorithm 2: IRT 2PL competence modulation (replaces TWO_STEP, 0 extra calls) */
+  IRT_MODULATED = 'irt_modulated',
+  /** Algorithm 3: Distribution-level calibrated ensemble with post-hoc reweighting */
+  DLCE = 'dlce',
 }
 
 export enum SupportedModel {

@@ -1,6 +1,10 @@
 import type { Person } from '@respondex/shared'
 import type { Question } from '@respondex/shared'
-import { QuestionType, Strategy, VarianceMode } from '@respondex/shared'
+import {
+  QuestionType, Strategy, VarianceMode, NumeracyLevel,
+  assignNumeracyLevel, NUMERACY_REFERENCE_DATA,
+  BEHAVIORAL_PARAMS, getBehavioralInstructions,
+} from '@respondex/shared'
 
 export interface BuiltPrompt {
   system: string
@@ -101,6 +105,45 @@ function buildCognitiveProfile(person: Person): string {
   if (!person.demographics?.education) return DEFAULT_COGNITIVE_PROFILE
   const educationLabel = label(EDUCATION_LABELS, person.demographics.education)
   return COGNITIVE_PROFILES[educationLabel] ?? DEFAULT_COGNITIVE_PROFILE
+}
+
+// ── P13: PIAAC Behavioral Fingerprint (Algorithm 1) ─────────────────────
+
+/**
+ * Build a question-type-specific behavioral profile based on PIAAC numeracy level.
+ * Replaces the education-only cognitive profile with item-aware behavioral instructions.
+ *
+ * Scientific basis:
+ * - Krosnick (1991) satisficing theory
+ * - Peters et al. (2006) numeracy & heuristic reliance
+ * - Hu & Collier (ACL 2024) item-dependent persona effects
+ */
+export function buildNumeracyBehavioralProfile(person: Person, question: Question): string {
+  const level = person.demographics?.numeracy_level ?? assignNumeracyLevel(person)
+  const params = BEHAVIORAL_PARAMS[level]
+  if (!params) return buildCognitiveProfile(person) // fallback
+
+  // Find the PIAAC capability description for this level
+  const levelDef = NUMERACY_REFERENCE_DATA.level_definitions.find((d) => d.level === level)
+  const capabilityDesc = levelDef?.description_cz ?? ''
+
+  // Get question-type-specific behavioral instructions
+  const instructions = getBehavioralInstructions(params, question.type)
+
+  const lines: string[] = [
+    `NUMERICKÁ GRAMOTNOST RESPONDENTA (PIAAC ${level}):`,
+    capabilityDesc,
+  ]
+
+  if (instructions.length > 0) {
+    lines.push('')
+    lines.push('BEHAVIORÁLNÍ VZOREC PŘI ODPOVÍDÁNÍ:')
+    for (const instr of instructions) {
+      lines.push(`- ${instr}`)
+    }
+  }
+
+  return lines.join('\n')
 }
 
 /** Question types where two-step competence probe and enhanced variance instructions apply */
@@ -228,10 +271,15 @@ export function buildPrompt(
   const formatInstr = formatInstruction(question, shuffledOptions, varianceMode)
   const personaBlock = buildPersonaBlock(person)
 
-  // Layer 1: inject cognitive profile for enhanced/two_step modes
-  const cognitiveBlock = varianceMode !== VarianceMode.STANDARD
-    ? buildCognitiveProfile(person)
-    : ''
+  // Layer 1: inject cognitive/behavioral profile depending on variance mode
+  let cognitiveBlock = ''
+  if (varianceMode === VarianceMode.NUMERACY_BEHAVIORAL || varianceMode === VarianceMode.IRT_MODULATED || varianceMode === VarianceMode.DLCE) {
+    // Algorithms 1, 2, 3: use PIAAC-based behavioral profile (question-type-aware)
+    cognitiveBlock = buildNumeracyBehavioralProfile(person, question)
+  } else if (varianceMode !== VarianceMode.STANDARD) {
+    // ENHANCED, TWO_STEP: use legacy education-keyed cognitive profile
+    cognitiveBlock = buildCognitiveProfile(person)
+  }
   const fullPersonaBlock = cognitiveBlock
     ? `${personaBlock}\n\n${cognitiveBlock}`
     : personaBlock
