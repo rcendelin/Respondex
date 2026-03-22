@@ -42,8 +42,10 @@ export const SimulationChunkMessageSchema = z.object({
   chunk_index: z.number().int().min(0),
   // 3–6 digit zero-padded number — allows up to 999 999 chunks (safe for current 1000-person cap)
   chunk_number: z.string().regex(/^\d{3,6}$/, 'chunk_number must be 3–6 digit zero-padded decimal'),
-  // Each person_id must also be a UUID to prevent path traversal in blob paths
-  person_ids: z.array(uuidV4).min(1).max(20),
+  // person_ids can be any non-empty alphanumeric string (e.g. "R0001", "P001" from XLSX import)
+  // Path traversal is not a concern here — person_ids are only used for in-memory filtering,
+  // never directly as blob storage paths (simulation_id is used for all blob paths)
+  person_ids: z.array(z.string().min(1).max(200).regex(/^[A-Za-z0-9_\-]+$/, 'ID osoby musí obsahovat pouze písmena, číslice, _ nebo -')).min(1).max(20),
   config: SimulationConfigSchema,
 })
 
