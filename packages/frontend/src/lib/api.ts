@@ -283,6 +283,26 @@ export async function exportAnalyticsXlsx(simulationId: string): Promise<void> {
   downloadBlob(blob, `simulace-${simulationId.substring(0, 8)}-vysledky.xlsx`)
 }
 
+// ── Questionnaire editor ────────────────────────────────────────────────────
+
+/** Create an empty questionnaire (no XLSX import). Used by the in-browser editor. */
+export function createEmptyQuestionnaire(name: string): Promise<{ id: string }> {
+  return request('/questionnaires', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function saveQuestionsJson(
+  id: string,
+  questions: import('@respondex/shared').Question[]
+): Promise<{ saved: number }> {
+  return request(`/questionnaires/${encodeURIComponent(id)}/questions`, {
+    method: 'PUT',
+    body: JSON.stringify(questions),
+  })
+}
+
 // ── Templates ─────────────────────────────────────────────────────────────
 
 export async function downloadTemplate(type: 'population' | 'questionnaire'): Promise<void> {

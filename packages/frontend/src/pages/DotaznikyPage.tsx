@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, Plus, Download, Trash2, FileUp, ChevronRight, Tag, List, Hash, ToggleLeft, AlignLeft, BarChart2, Star, Grid, TrendingUp, Diff } from 'lucide-react'
+import { FileText, Plus, Download, Trash2, FileUp, ChevronRight, Tag, List, Hash, ToggleLeft, AlignLeft, BarChart2, Star, Grid, TrendingUp, Diff, Pencil } from 'lucide-react'
 import {
   getQuestionnaires, getQuestionnaire, createQuestionnaire, exportQuestionnaire, deleteQuestionnaire,
   downloadTemplate, type QuestionnaireListItem,
@@ -11,6 +11,7 @@ import { Badge } from '../components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
+import { QuestionnaireEditorDialog } from '../components/questionnaire-editor/QuestionnaireEditorDialog'
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -364,6 +365,8 @@ export function DotaznikyPage() {
   const [deleteTarget, setDeleteTarget] = useState<QuestionnaireListItem | null>(null)
   const [detailTarget, setDetailTarget] = useState<QuestionnaireListItem | null>(null)
   const [exportingId, setExportingId] = useState<string | null>(null)
+  // Editor state: null = closed, 'new' = create new, string = edit existing by id
+  const [editorTarget, setEditorTarget] = useState<string | 'new' | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setFetchError(null)
@@ -396,8 +399,11 @@ export function DotaznikyPage() {
           <Button variant="outline" size="sm" onClick={() => downloadTemplate('questionnaire')}>
             <Download className="h-4 w-4 mr-1.5" />Vzorová šablona
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setEditorTarget('new')}>
+            <Pencil className="h-4 w-4 mr-1.5" />Vytvořit v editoru
+          </Button>
           <Button size="sm" onClick={() => setNewDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" />Nový dotazník
+            <Plus className="h-4 w-4 mr-1.5" />Nový dotazník (XLSX)
           </Button>
         </div>
       </div>
@@ -444,6 +450,10 @@ export function DotaznikyPage() {
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(q.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="icon" title="Upravit v editoru"
+                          onClick={(e) => { e.stopPropagation(); setEditorTarget(q.id) }}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" title="Exportovat XLSX"
                           disabled={exportingId === q.id}
                           onClick={(e) => { e.stopPropagation(); void handleExport(q.id) }}>
@@ -469,6 +479,12 @@ export function DotaznikyPage() {
       <DeleteDialog questionnaire={deleteTarget} onClose={() => setDeleteTarget(null)}
         onDeleted={() => { setDeleteTarget(null); void load() }} />
       <QuestionnaireDetailDialog questionnaire={detailTarget} onClose={() => setDetailTarget(null)} />
+      <QuestionnaireEditorDialog
+        open={editorTarget !== null}
+        questionnaireId={editorTarget === 'new' ? null : (editorTarget ?? null)}
+        onOpenChange={(o) => { if (!o) setEditorTarget(null) }}
+        onSaved={() => { setEditorTarget(null); void load() }}
+      />
     </div>
   )
 }

@@ -1,7 +1,8 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from '@azure/functions'
 import { randomUUID } from 'crypto'
+import { z } from 'zod'
 import { BlobStorageService } from '../services/storage.js'
-import { parseQuestionnaireXlsx } from '@respondex/shared'
+import { parseQuestionnaireXlsx, QuestionSchema } from '@respondex/shared'
 import { NotFoundError, ValidationError, errorResponse, requireUUID, requireUploadSize } from '../lib/errors.js'
 
 function storage() {
@@ -162,6 +163,35 @@ async function deleteQuestionnaire(req: HttpRequest, ctx: InvocationContext): Pr
   }
 }
 
+// ── PUT /api/questionnaires/{id}/questions ────────────────────────────────
+async function saveQuestionsJson(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const id = requireUUID(req.params['id'])
+    const svc = storage()
+    const exists = await svc.blobExists(`data/questionnaires/${id}/meta.json`)
+    if (!exists) throw new NotFoundError(`Dotazník "${id}" nebyl nalezen`)
+
+    const body = await req.json() as unknown
+    const result = z.array(QuestionSchema).max(500, 'Dotazník může mít nejvýše 500 otázek').safeParse(body)
+    if (!result.success) {
+      return {
+        status: 422,
+        jsonBody: { error: 'Neplatné otázky', errors: result.error.issues },
+      }
+    }
+
+    await svc.writeJson(`data/questionnaires/${id}/questions.json`, result.data)
+    const meta = await svc.readJson<Record<string, unknown>>(`data/questionnaires/${id}/meta.json`)
+    meta['question_count'] = result.data.length
+    meta['updated_at'] = new Date().toISOString()
+    await svc.writeJson(`data/questionnaires/${id}/meta.json`, meta)
+
+    return { status: 200, jsonBody: { saved: result.data.length, meta } }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Register routes ────────────────────────────────────────────────────────
 app.http('questionnaires-create', {
   methods: ['POST'],
@@ -203,4 +233,11 @@ app.http('questionnaires-delete', {
   route: 'questionnaires/{id}',
   authLevel: 'anonymous',
   handler: deleteQuestionnaire,
+})
+
+app.http('questionnaires-save-questions', {
+  methods: ['PUT'],
+  route: 'questionnaires/{id}/questions',
+  authLevel: 'anonymous',
+  handler: saveQuestionsJson,
 })
