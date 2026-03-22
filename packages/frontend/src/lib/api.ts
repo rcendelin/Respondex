@@ -89,18 +89,27 @@ export async function createPopulation(name: string, xlsxFile: File): Promise<{ 
     method: 'POST',
     body: JSON.stringify({ name }),
   })
-  // Step 2: upload XLSX
-  const form = new FormData()
-  form.append('file', xlsxFile)
+  // Step 2: upload XLSX as raw binary (backend reads req.arrayBuffer())
+  const arrayBuffer = await xlsxFile.arrayBuffer()
   const res = await fetch(`${BASE}/populations/${encodeURIComponent(created.id)}/import`, {
     method: 'POST',
-    body: form,
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    body: arrayBuffer,
   })
   if (!res.ok) {
+    // On import failure, clean up the empty population we just created
+    request(`/populations/${encodeURIComponent(created.id)}`, { method: 'DELETE' }).catch(() => undefined)
     let message = `HTTP ${res.status}`
     try {
-      const body = (await res.json()) as { error?: string }
-      if (body.error) message = body.error
+      const body = (await res.json()) as { error?: string; errors?: Array<{ message: string }> }
+      if (body.errors && body.errors.length > 0) {
+        // Show first few validation errors
+        const details = body.errors.slice(0, 3).map((e) => e.message).join(' • ')
+        message = `${body.error ?? 'Chyba importu'}: ${details}`
+        if (body.errors.length > 3) message += ` (a ${body.errors.length - 3} dalších)`
+      } else if (body.error) {
+        message = body.error
+      }
     } catch {
       // ignore
     }
@@ -142,17 +151,29 @@ export async function createQuestionnaire(
     method: 'POST',
     body: JSON.stringify({ name }),
   })
-  const form = new FormData()
-  form.append('file', xlsxFile)
+  // Upload XLSX as raw binary (backend reads req.arrayBuffer())
+  const arrayBuffer = await xlsxFile.arrayBuffer()
   const res = await fetch(
     `${BASE}/questionnaires/${encodeURIComponent(created.id)}/import`,
-    { method: 'POST', body: form }
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      body: arrayBuffer,
+    }
   )
   if (!res.ok) {
+    // On import failure, clean up the empty questionnaire we just created
+    request(`/questionnaires/${encodeURIComponent(created.id)}`, { method: 'DELETE' }).catch(() => undefined)
     let message = `HTTP ${res.status}`
     try {
-      const body = (await res.json()) as { error?: string }
-      if (body.error) message = body.error
+      const body = (await res.json()) as { error?: string; errors?: Array<{ message: string }> }
+      if (body.errors && body.errors.length > 0) {
+        const details = body.errors.slice(0, 3).map((e) => e.message).join(' • ')
+        message = `${body.error ?? 'Chyba importu'}: ${details}`
+        if (body.errors.length > 3) message += ` (a ${body.errors.length - 3} dalších)`
+      } else if (body.error) {
+        message = body.error
+      }
     } catch {
       // ignore
     }
