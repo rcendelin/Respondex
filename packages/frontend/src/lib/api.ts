@@ -129,6 +129,26 @@ export async function deletePopulation(id: string): Promise<void> {
   await request(`/populations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
+export interface GenerateParams {
+  count: number
+  male_pct: number
+  age_min: number
+  age_max: number
+  region?: string
+}
+
+export interface GenerateResult {
+  generated: number
+  meta: PopulationMeta
+}
+
+export function generatePopulation(id: string, params: GenerateParams): Promise<GenerateResult> {
+  return request(`/populations/${encodeURIComponent(id)}/generate`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
 // ── Questionnaires ─────────────────────────────────────────────────────────
 
 export type QuestionnaireListItem = QuestionnaireMeta
