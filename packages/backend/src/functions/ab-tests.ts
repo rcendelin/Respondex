@@ -104,7 +104,9 @@ async function getABTestResults(req: HttpRequest): Promise<HttpResponseInit> {
         return { status: 400, jsonBody: { error: `Nedostatek dokončených ramen pro srovnání (${armData.length} z ${config.arms.length})` } }
       }
 
-      const baselineArmId = config.arms[0]?.id ?? armData[0]!.arm_id
+      // Prefer 'standard' arm as baseline; fall back to first arm
+      const standardArm = config.arms.find((a) => a.config_override.variance_mode === 'standard')
+      const baselineArmId = standardArm?.id ?? config.arms[0]?.id ?? armData[0]!.arm_id
       const { armMetrics, comparison } = computeAndCompareArms(
         armData, questions, persons, config.reference_questions, baselineArmId,
       )

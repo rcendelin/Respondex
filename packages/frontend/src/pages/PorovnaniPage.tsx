@@ -89,7 +89,15 @@ function CreateTestDialog({
     setLoading(true)
     setError(null)
     try {
-      const arms = selected.map((s) => ({
+      // Sort: standard first (baseline), then alphabetically by variance_mode
+      const sorted = [...selected].sort((a, b) => {
+        const aMode = a.config.variance_mode ?? 'standard'
+        const bMode = b.config.variance_mode ?? 'standard'
+        if (aMode === 'standard') return -1
+        if (bMode === 'standard') return 1
+        return aMode.localeCompare(bMode)
+      })
+      const arms = sorted.map((s) => ({
         name: varianceLabel(s.config.variance_mode) + ` (${s.id.substring(0, 8)})`,
         variance_mode: s.config.variance_mode ?? 'standard',
         simulation_id: s.id,
@@ -187,7 +195,7 @@ function CreateTestDialog({
           {selectedSimIds.size > 0 && (
             <p className="text-xs text-muted-foreground">
               Vybráno: {selectedSimIds.size} simulací.
-              Baseline: první vybraná ({varianceLabel(simulations.find((s) => selectedSimIds.has(s.id))?.config.variance_mode)}).
+              Baseline: vždy Standardní (pokud je vybrán), jinak první v pořadí.
             </p>
           )}
 
