@@ -8,6 +8,13 @@ export * from './types/person.js'
 export * from './types/questionnaire.js'
 export * from './types/simulation.js'
 export * from './types/analytics.js'
+export * from './types/numeracy.js'
+
+// Reference data
+export { NUMERACY_REFERENCE_DATA } from './data/numeracy-reference.js'
+
+// Numeracy assignment utilities
+export { assignNumeracyLevel, getNumeracyDistribution } from './numeracy-assigner.js'
 
 // Validation schemas
 export * from './validation/person.schema.js'

@@ -7,6 +7,7 @@ import type {
   SimulationMeta,
   SimulationConfig,
   AnalyticsResult,
+  NumeracyReferenceDataset,
 } from '@respondex/shared'
 
 // Local types matching the backend API shapes (not exported from @respondex/shared)
@@ -311,6 +312,12 @@ export async function downloadTemplate(type: 'population' | 'questionnaire'): Pr
   const blob = await res.blob()
   const filename = type === 'population' ? 'vzor-populace.xlsx' : 'vzor-dotaznik.xlsx'
   downloadBlob(blob, filename)
+}
+
+// ── Reference Data ────────────────────────────────────────────────────────
+
+export function getNumeracyReference(): Promise<NumeracyReferenceDataset> {
+  return request('/reference/numeracy')
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

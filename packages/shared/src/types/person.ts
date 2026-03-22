@@ -63,6 +63,8 @@ export interface Demographics {
   employment_status?: EmploymentStatus
   income_level?: IncomeLevel
   region?: Region
+  /** PIAAC numeracy proficiency level (assigned from reference data distributions) */
+  numeracy_level?: import('./numeracy.js').NumeracyLevel
   /** Any additional custom demographic fields from XLSX */
   custom_fields?: Record<string, string | number | boolean>
 }

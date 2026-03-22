@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Users, FileText, PlayCircle, BarChart2 } from 'lucide-react'
+import { Users, FileText, PlayCircle, BarChart2, BookOpen } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 const NAV_ITEMS = [
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/dotazniky', icon: FileText, label: 'Dotazníky' },
   { to: '/simulace', icon: PlayCircle, label: 'Simulace' },
   { to: '/vysledky', icon: BarChart2, label: 'Výsledky' },
+  { to: '/reference', icon: BookOpen, label: 'Ref. data' },
 ] as const
 
 export function Layout() {
