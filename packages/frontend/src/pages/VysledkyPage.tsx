@@ -247,7 +247,7 @@ export function VysledkyPage() {
             {simulations.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 {s.id.substring(0, 8)}… · {s.config.strategy} · {s.config.model}
-                {s.completed_at && ` · ${new Date(s.completed_at).toLocaleDateString('cs-CZ')}`}
+                {s.completed_at && ` · ${new Date(s.completed_at).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
               </SelectItem>
             ))}
           </SelectContent>
