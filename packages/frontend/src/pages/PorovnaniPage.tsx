@@ -53,7 +53,12 @@ function CreateTestDialog({
   useEffect(() => {
     if (open) {
       getSimulations()
-        .then((sims) => setSimulations(sims.filter((s) => s.status === SimulationStatus.COMPLETED)))
+        .then((data) => {
+          const list = Array.isArray(data)
+            ? data
+            : (data as unknown as { simulations: SimulationListItem[] }).simulations ?? []
+          setSimulations(list.filter((s) => s.status === SimulationStatus.COMPLETED))
+        })
         .catch(() => setSimulations([]))
       setSelectedSimIds(new Set())
       setName('')
