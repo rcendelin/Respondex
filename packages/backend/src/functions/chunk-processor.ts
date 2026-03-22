@@ -11,7 +11,8 @@ import type {
   SimulationResponse,
   SupportedModel,
 } from '@respondex/shared'
-import { SimulationStatus, Strategy, SimulationChunkMessageSchema } from '@respondex/shared'
+import { SimulationStatus, Strategy } from '@respondex/shared'
+import { parseChunkMessage } from '../lib/queue.js'
 
 /** Max OpenAI call retries for refusals */
 const MAX_REFUSAL_RETRIES = 2
@@ -33,20 +34,13 @@ async function processSimulationChunk(
   // This enforces UUID format on all ID fields (prevents path traversal) and validates
   // chunk_number format, model whitelist, and all config bounds. Invalid messages are
   // thrown to trigger Azure dead-letter (maxDequeueCount = 5).
-  let msg: SimulationChunkMessage
-  try {
-    const raw = typeof messageText === 'string' ? messageText : String(messageText)
-    const parsed = JSON.parse(raw) as unknown
-    const result = SimulationChunkMessageSchema.safeParse(parsed)
-    if (!result.success) {
-      const firstIssue = result.error.issues[0]
-      throw new Error(`Chunk message validation failed: ${firstIssue?.message ?? 'unknown'}`)
-    }
-    msg = result.data as SimulationChunkMessage
-  } catch (err) {
-    ctx.error('Failed to parse/validate chunk message — moving to dead letter:', err instanceof Error ? err.message : String(err))
-    throw err instanceof Error ? err : new Error('Invalid chunk message format')
+  const { msg: parsedMsg } = parseChunkMessage(messageText)
+  if (!parsedMsg) {
+    const err = new Error('Invalid chunk message format')
+    ctx.error('Failed to parse/validate chunk message — moving to dead letter:', err.message)
+    throw err
   }
+  const msg: SimulationChunkMessage = parsedMsg
 
   const { simulation_id, chunk_index, chunk_number, person_ids, config } = msg
   const svc = storage()

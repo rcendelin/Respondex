@@ -1,8 +1,12 @@
 import { app, type InvocationContext } from '@azure/functions'
 import { BlobStorageService } from '../services/storage.js'
-import { SimulationChunkMessageSchema } from '@respondex/shared'
+import { parseChunkMessage } from '../lib/queue.js'
 import type { SimulationMeta } from '@respondex/shared'
 import { SimulationStatus } from '@respondex/shared'
+
+function storage() {
+  return new BlobStorageService()
+}
 
 /**
  * Poison queue handler: triggered when a chunk message exceeds maxDequeueCount (5 retries).
@@ -14,27 +18,7 @@ import { SimulationStatus } from '@respondex/shared'
 async function handlePoisonChunk(messageText: unknown, ctx: InvocationContext): Promise<void> {
   ctx.warn('Poison chunk message received — marking simulation as PARTIAL_FAILURE')
 
-  // Best-effort parse of the poison message to extract simulation_id
-  let simulationId: string | undefined
-  try {
-    const raw = typeof messageText === 'string' ? messageText : String(messageText)
-    const parsed = JSON.parse(raw) as unknown
-    const result = SimulationChunkMessageSchema.safeParse(parsed)
-    if (result.success) {
-      simulationId = result.data.simulation_id
-    } else {
-      // If validation fails, try extracting simulation_id directly (partial message)
-      if (typeof parsed === 'object' && parsed !== null && 'simulation_id' in parsed) {
-        const rawId = (parsed as Record<string, unknown>)['simulation_id']
-        if (typeof rawId === 'string' && /^[0-9a-f-]{36}$/i.test(rawId)) {
-          simulationId = rawId
-        }
-      }
-    }
-  } catch {
-    ctx.error('Could not parse poison message at all — cannot update simulation status')
-    return
-  }
+  const { simulationId } = parseChunkMessage(messageText)
 
   if (!simulationId) {
     ctx.error('Poison message has no valid simulation_id — cannot update simulation status')
@@ -42,7 +26,7 @@ async function handlePoisonChunk(messageText: unknown, ctx: InvocationContext): 
   }
 
   const metaPath = `data/simulations/${simulationId}/meta.json`
-  const svc = new BlobStorageService()
+  const svc = storage()
 
   try {
     const meta = await svc.readJson<SimulationMeta>(metaPath)
@@ -63,9 +47,7 @@ async function handlePoisonChunk(messageText: unknown, ctx: InvocationContext): 
     }
 
     await svc.writeJson(metaPath, updatedMeta)
-    ctx.warn(
-      `Simulation ${simulationId} marked as PARTIAL_FAILURE due to poison chunk message`
-    )
+    ctx.warn(`Simulation ${simulationId} marked as PARTIAL_FAILURE due to poison chunk message`)
   } catch (err) {
     ctx.error(
       `Failed to update simulation ${simulationId} status to PARTIAL_FAILURE:`,

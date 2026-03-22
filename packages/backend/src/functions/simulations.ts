@@ -68,17 +68,18 @@ async function createSimulation(req: HttpRequest, ctx: InvocationContext): Promi
       throw new NotFoundError('Dotazník nebyl nalezen')
     }
 
-    // Validate question count before starting (cost exhaustion guard)
-    const questions = await svc.readJson<unknown[]>(`data/questionnaires/${questionnaireId}/questions.json`)
+    // Load questions and persons in parallel (independent resources)
+    const [questions, persons] = await Promise.all([
+      svc.readJson<unknown[]>(`data/questionnaires/${questionnaireId}/questions.json`),
+      svc.readJson<Person[]>(`data/populations/${populationId}/persons.json`),
+    ])
+
     if (!Array.isArray(questions) || questions.length === 0) {
       throw new ValidationError('Dotazník neobsahuje žádné otázky')
     }
     if (questions.length > MAX_QUESTIONS) {
       throw new ValidationError(`Dotazník obsahuje ${questions.length} otázek — maximum je ${MAX_QUESTIONS}`)
     }
-
-    // Load persons and enforce person count limit
-    const persons = await svc.readJson<Person[]>(`data/populations/${populationId}/persons.json`)
     if (!Array.isArray(persons) || persons.length === 0) {
       throw new ValidationError('Populace neobsahuje žádné osoby')
     }
@@ -126,19 +127,20 @@ async function createSimulation(req: HttpRequest, ctx: InvocationContext): Promi
     await queueRef.createIfNotExists()
 
     try {
-      for (let i = 0; i < chunks.length; i++) {
-        const chunkPersonIds = chunks[i]
-        if (!chunkPersonIds) continue
-        const chunkNumber = String(i + 1).padStart(3, '0')
-        const msg: SimulationChunkMessage = {
-          simulation_id: simulationId,
-          chunk_index: i,
-          chunk_number: chunkNumber,
-          person_ids: chunkPersonIds,
-          config: safeConfig,
-        }
-        await queueRef.sendMessage(encodeMessage(msg))
-      }
+      await Promise.all(
+        chunks.map((chunkPersonIds, i) => {
+          if (!chunkPersonIds) return Promise.resolve()
+          const chunkNumber = String(i + 1).padStart(3, '0')
+          const msg: SimulationChunkMessage = {
+            simulation_id: simulationId,
+            chunk_index: i,
+            chunk_number: chunkNumber,
+            person_ids: chunkPersonIds,
+            config: safeConfig,
+          }
+          return queueRef.sendMessage(encodeMessage(msg))
+        })
+      )
     } catch (enqueueErr) {
       // Partial enqueue — mark simulation as failed so it doesn't stay "running" forever
       const failedMeta: SimulationMeta = {
