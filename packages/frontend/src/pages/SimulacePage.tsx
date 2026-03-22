@@ -48,7 +48,7 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   const [populationId, setPopulationId] = useState('')
   const [questionnaireId, setQuestionnaireId] = useState('')
   const [strategy, setStrategy] = useState<string>(Strategy.A)
-  const [model, setModel] = useState<string>(SupportedModel.GPT_4O_MINI)
+  const [model, setModel] = useState<string>(SupportedModel.GPT_54_MINI)
   const [temperature, setTemperature] = useState('0.7')
   const [runsPerPerson, setRunsPerPerson] = useState('3')
   const [varianceMode, setVarianceMode] = useState<string>(VarianceMode.ENHANCED)
@@ -71,7 +71,7 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
 
   function reset() {
     setPopulationId(''); setQuestionnaireId(''); setStrategy(Strategy.A)
-    setModel(SupportedModel.GPT_4O_MINI); setTemperature('0.7'); setRunsPerPerson('3')
+    setModel(SupportedModel.GPT_54_MINI); setTemperature('0.7'); setRunsPerPerson('3')
     setVarianceMode(VarianceMode.ENHANCED)
     setError(null); setLoading(false)
   }
