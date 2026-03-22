@@ -1,7 +1,7 @@
 import { app, type InvocationContext } from '@azure/functions'
 import { BlobStorageService } from '../services/storage.js'
 import { OpenAIService } from '../services/openai.js'
-import { buildPrompt, isRefusal, REFUSAL_FALLBACK } from '../services/prompt-builder.js'
+import { buildPrompt, isRefusal, REFUSAL_FALLBACK, buildCompetenceProbe, extractCompetenceHint, isNumericQuestion } from '../services/prompt-builder.js'
 import { parseModelResponse } from '../services/response-parser.js'
 import type {
   Person,
@@ -11,7 +11,7 @@ import type {
   SimulationResponse,
   SupportedModel,
 } from '@respondex/shared'
-import { SimulationStatus, Strategy } from '@respondex/shared'
+import { SimulationStatus, Strategy, VarianceMode } from '@respondex/shared'
 import { parseChunkMessage } from '../lib/queue.js'
 
 /** Max OpenAI call retries for refusals */
@@ -98,6 +98,7 @@ async function processSimulationChunk(
             config.strategy as Strategy,
             config.model as SupportedModel, // guaranteed by SimulationChunkMessageSchema.safeParse above
             config.temperature,
+            (config.variance_mode as VarianceMode) ?? VarianceMode.STANDARD,
             run,
             ctx
           )
@@ -160,11 +161,29 @@ async function callWithRefusalRetry(
   strategy: Strategy,
   model: SupportedModel,
   temperature: number,
+  varianceMode: VarianceMode,
   run: number,
   ctx: InvocationContext
 ): Promise<SimulationResponse> {
   const timestamp = new Date().toISOString()
-  let { system, user } = buildPrompt(person, question, strategy)
+  let { system, user } = buildPrompt(person, question, strategy, varianceMode)
+
+  // Layer 3: Two-step competence probe for numeric questions
+  if (varianceMode === VarianceMode.TWO_STEP && isNumericQuestion(question)) {
+    try {
+      const probeResult = await openai.callModel({
+        model,
+        systemPrompt: system,
+        userPrompt: buildCompetenceProbe(person, question),
+        temperature: 0.3,
+      })
+      const hint = extractCompetenceHint(probeResult.content)
+      user = `${user}\n\nKOMPETENCE RESPONDENTA PRO TUTO OTÁZKU: ${hint}`
+    } catch (err) {
+      ctx.warn(`Competence probe failed for question=${question.id} run=${run}: ${err instanceof Error ? err.message : 'unknown'}`)
+      // Continue without probe — Layer 1+2 still active
+    }
+  }
 
   for (let attempt = 0; attempt <= MAX_REFUSAL_RETRIES; attempt++) {
     const result = await openai.callModel({

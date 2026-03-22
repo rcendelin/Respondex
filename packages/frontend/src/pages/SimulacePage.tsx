@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { PlayCircle, Plus, Trash2 } from 'lucide-react'
-import { Strategy, SimulationStatus, SupportedModel } from '@respondex/shared'
+import { Strategy, SimulationStatus, SupportedModel, VarianceMode } from '@respondex/shared'
 import {
   getPopulations, getQuestionnaires, getSimulations, startSimulation,
   deleteSimulation, getSimulationStatus,
@@ -51,6 +51,7 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   const [model, setModel] = useState<string>(SupportedModel.GPT_4O_MINI)
   const [temperature, setTemperature] = useState('0.7')
   const [runsPerPerson, setRunsPerPerson] = useState('3')
+  const [varianceMode, setVarianceMode] = useState<string>(VarianceMode.ENHANCED)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -71,6 +72,7 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   function reset() {
     setPopulationId(''); setQuestionnaireId(''); setStrategy(Strategy.A)
     setModel(SupportedModel.GPT_4O_MINI); setTemperature('0.7'); setRunsPerPerson('3')
+    setVarianceMode(VarianceMode.ENHANCED)
     setError(null); setLoading(false)
   }
 
@@ -94,6 +96,7 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
         model: model as SupportedModel,
         temperature: temp,
         runs_per_person: runs,
+        variance_mode: varianceMode as VarianceMode,
       })
       reset(); onStarted()
     } catch (err) {
@@ -108,6 +111,12 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   ]
 
   const modelOptions = Object.values(SupportedModel).map((m) => ({ value: m, label: m }))
+
+  const varianceModeOptions = [
+    { value: VarianceMode.STANDARD, label: 'Standardní (původní)' },
+    { value: VarianceMode.ENHANCED, label: 'Rozšířený (kognitivní profily)' },
+    { value: VarianceMode.TWO_STEP, label: 'Dvoustupňový (+ probe kompetence)' },
+  ]
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
@@ -171,6 +180,17 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
               <Input id="runs" type="number" min="1" max="10" step="1"
                 value={runsPerPerson} onChange={(e) => setRunsPerPerson(e.target.value)} disabled={loading} />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Režim variability odpovědí</Label>
+            <Select value={varianceMode} onValueChange={setVarianceMode} disabled={loading}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {varianceModeOptions.map((v) => (
+                  <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
@@ -298,6 +318,9 @@ export function SimulacePage() {
                       <div className="text-xs text-muted-foreground">
                         Strategie {sim.config.strategy} · {sim.config.model} · temp {sim.config.temperature}
                         {' '}· {sim.config.runs_per_person}× per osobu
+                        {sim.config.variance_mode && sim.config.variance_mode !== 'standard'
+                          ? ` · variabilita: ${sim.config.variance_mode}`
+                          : ''}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">

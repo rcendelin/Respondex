@@ -101,7 +101,14 @@ function validateAnswer(parsed: unknown, question: Question): ParsedResponse {
     }
 
     case QuestionType.NUMBER: {
-      const num = Number(answer)
+      let num = Number(answer)
+      // Soft-parse: extract number from Czech approximation patterns ("asi 100", "cca 150")
+      if (isNaN(num) && typeof answer === 'string') {
+        const extracted = answer.match(/(\d+[.,]?\d*)/)
+        if (extracted?.[1]) {
+          num = Number(extracted[1].replace(',', '.'))
+        }
+      }
       if (isNaN(num) || !Number.isFinite(num)) {
         return invalidResponse(`Neplatné číslo: "${String(answer)}"`)
       }

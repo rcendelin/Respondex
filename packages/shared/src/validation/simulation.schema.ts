@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Strategy, SimulationStatus, SupportedModel } from '../types/simulation.js'
+import { Strategy, SimulationStatus, SupportedModel, VarianceMode } from '../types/simulation.js'
 
 /** UUID v4 pattern — used to validate ID fields from queue messages and stored blobs */
 const uuidV4 = z
@@ -33,6 +33,12 @@ export const SimulationConfigSchema = z.object({
     .min(1, 'Minimální počet runs je 1')
     .max(10, 'Maximální počet runs je 10')
     .default(3),
+  variance_mode: z
+    .nativeEnum(VarianceMode, {
+      errorMap: () => ({ message: 'Režim variance musí být standard, enhanced nebo two_step' }),
+    })
+    .optional()
+    .default(VarianceMode.STANDARD),
   run_calibration: z.boolean().optional().default(false),
   ensemble_models: z.array(z.string().min(1).max(100)).max(5).optional(),
 })

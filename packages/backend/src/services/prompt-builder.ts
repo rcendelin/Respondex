@@ -1,6 +1,6 @@
 import type { Person } from '@respondex/shared'
 import type { Question } from '@respondex/shared'
-import { QuestionType, Strategy } from '@respondex/shared'
+import { QuestionType, Strategy, VarianceMode } from '@respondex/shared'
 
 export interface BuiltPrompt {
   system: string
@@ -75,8 +75,41 @@ function shuffle<T>(arr: T[]): T[] {
   return copy
 }
 
+// ── P11: Cognitive profiles per education level (Layer 1) ────────────────
+// Keys match the Czech labels produced by label(EDUCATION_LABELS, ...) in buildPersonaBlock.
+const COGNITIVE_PROFILES: Record<string, string> = {
+  'Základní vzdělání': `KOGNITIVNÍ STYL RESPONDENTA:
+Tato osoba má základní vzdělání. Má omezenou zkušenost s čísly a statistikou. U numerických otázek často zaokrouhluje, tipuje, nebo odpovídá „od oka". Při pravděpodobnostních otázkách se často výrazně mýlí — zaměňuje procenta s absolutními čísly, nebo odpovídá „typickým" kulatým číslem místo výpočtu. Na otázky odpovídá rychle, intuitivně, bez dlouhého přemýšlení. Může si otázku špatně vyložit nebo přeskočit složitější část.`,
+
+  'Středoškolské bez maturity': `KOGNITIVNÍ STYL RESPONDENTA:
+Tato osoba má výuční list. Zvládá základní počty z praxe, ale u pravděpodobnosti a statistiky se může splést. Při numerických otázkách zaokrouhluje nebo odhaduje. Má tendenci odpovídat „typickými" čísly (50, 100, 500) místo přesného výpočtu. U abstraktních otázek může odpovědět nepřesně — ne proto, že by nechtěla, ale protože si není jistá a tipuje.`,
+
+  'Středoškolské s maturitou': `KOGNITIVNÍ STYL RESPONDENTA:
+Tato osoba má středoškolské vzdělání s maturitou. Většinu numerických otázek zvládne správně, ale u složitějších pravděpodobnostních úloh se může dopustit běžných chyb — záměna procent a absolutních čísel, base rate neglect, zaokrouhlení. Přemýšlí nad odpověďmi, ale ne vždy do hloubky. Občas odpoví přibližně, když si není jistá přesným číslem.`,
+
+  'Bakalářské': `KOGNITIVNÍ STYL RESPONDENTA:
+Tato osoba má bakalářské vzdělání. Má dobré praktické znalosti a většinu numerických otázek zvládne. Občas může udělat drobnou chybu v úsudku — spíše z nepozornosti nebo rychlosti odpovědi. U složitějších statistických otázek může odhadovat místo přesného výpočtu.`,
+
+  'Vysokoškolské (Mgr./Ing. a výše)': `KOGNITIVNÍ STYL RESPONDENTA:
+Tato osoba má vysokoškolské vzdělání. Většinu numerických a logických otázek řeší správně. Přesto může občas podlehnout kognitivním zkreslením — anchoring, dostupnostní heuristika, přehnaná sebejistota. Při rychlém odpovídání může přehlédnout detail v otázce. Odpovídá promyšleně, ale není imunní vůči chybám.`,
+}
+
+const DEFAULT_COGNITIVE_PROFILE = `KOGNITIVNÍ STYL RESPONDENTA:
+O vzdělání této osoby není nic známo. Odpovídá na základě svého běžného úsudku — někdy přesně, někdy přibližně. Jako většina lidí může u numerických otázek tipovat nebo zaokrouhlovat.`
+
+function buildCognitiveProfile(person: Person): string {
+  if (!person.demographics?.education) return DEFAULT_COGNITIVE_PROFILE
+  const educationLabel = label(EDUCATION_LABELS, person.demographics.education)
+  return COGNITIVE_PROFILES[educationLabel] ?? DEFAULT_COGNITIVE_PROFILE
+}
+
+/** Question types where two-step competence probe and enhanced variance instructions apply */
+export function isNumericQuestion(question: Question): boolean {
+  return [QuestionType.NUMBER, QuestionType.NPS, QuestionType.LIKERT, QuestionType.SEMANTIC_DIFF].includes(question.type)
+}
+
 // ── P10: Format enforcement per question type ─────────────────────────────
-function formatInstruction(question: Question, shuffledOptions?: string[]): string {
+function formatInstruction(question: Question, shuffledOptions?: string[], varianceMode?: VarianceMode): string {
   const text = question.text
   const opts = shuffledOptions ?? question.options ?? []
   const optList = opts.map((o) => `"${o}"`).join(', ')
@@ -96,7 +129,11 @@ function formatInstruction(question: Question, shuffledOptions?: string[]): stri
       const max = question.scale_max ?? 5
       const minLabel = question.scale_min_label ? ` (${question.scale_min_label})` : ''
       const maxLabel = question.scale_max_label ? ` (${question.scale_max_label})` : ''
-      return `Otázka: ${text}\nStupnice: ${min}${minLabel} až ${max}${maxLabel}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo od ${min} do ${max}>}`
+      const base = `Otázka: ${text}\nStupnice: ${min}${minLabel} až ${max}${maxLabel}`
+      if (varianceMode && varianceMode !== VarianceMode.STANDARD) {
+        return `${base}\n\nOdpověz jako SKUTEČNÝ ČLOVĚK. Lidé na Likertově stupnici neodpovídají vždy racionálně — někteří se vyhýbají extrémům, jiní naopak odpovídají výhradně krajními hodnotami. Odpověz podle osobnosti a nálady této konkrétní osoby.\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo od ${min} do ${max}>}`
+      }
+      return `${base}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo od ${min} do ${max}>}`
     }
 
     case QuestionType.NUMBER: {
@@ -104,14 +141,23 @@ function formatInstruction(question: Question, shuffledOptions?: string[]): stri
         question.scale_min !== undefined && question.scale_max !== undefined
           ? `\nRozsah: ${question.scale_min}–${question.scale_max}`
           : ''
-      return `Otázka: ${text}${rangeNote}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo>}`
+      const base = `Otázka: ${text}${rangeNote}`
+      if (varianceMode && varianceMode !== VarianceMode.STANDARD) {
+        return `${base}\n\nDŮLEŽITÉ: Tato osoba nemusí znát přesnou matematickou odpověď. Odpověz tak, jak by SKUTEČNĚ odpověděl TENTO KONKRÉTNÍ člověk — což může být přesná hodnota, ale také odhad, přibližné číslo, zaokrouhlení, nebo i chybná odpověď vycházející z nepochopení otázky. NEODPOVÍDEJ jako kalkulačka — odpověz jako ČLOVĚK s daným profilem.\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo>}`
+      }
+      return `${base}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo>}`
     }
 
     case QuestionType.OPEN_TEXT:
       return `Otázka: ${text}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": "<tvoje odpověď v češtině, 1–3 věty>"}`
 
-    case QuestionType.NPS:
-      return `Otázka: ${text}\nStupnice: 0 (vůbec nedoporučuji) až 10 (rozhodně doporučuji)\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo od 0 do 10>}`
+    case QuestionType.NPS: {
+      const base = `Otázka: ${text}\nStupnice: 0 (vůbec nedoporučuji) až 10 (rozhodně doporučuji)`
+      if (varianceMode && varianceMode !== VarianceMode.STANDARD) {
+        return `${base}\n\nOdpověz tak, jak by SKUTEČNĚ odpověděl TENTO KONKRÉTNÍ člověk — neodpovídej „průměrně" nebo racionálně optimálně. Lidé na NPS stupnici často odpovídají extrémně (0–1 nebo 9–10) nebo se drží „bezpečného" středu (5–7). Tato osoba odpoví podle svého temperamentu a zkušeností.\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo od 0 do 10>}`
+      }
+      return `${base}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": <číslo od 0 do 10>}`
+    }
 
     case QuestionType.RANKING:
       return `Otázka: ${text}\nPoložky k seřazení: ${optList}\n\nOdpověz POUZE tímto JSON objektem (bez dalšího textu):\n{"answer": ["<1. místo>", "<2. místo>", ...]}\nSeřaď všechny položky od nejdůležitější po nejméně důležitou.`
@@ -170,7 +216,8 @@ function buildPersonaBlock(person: Person): string {
 export function buildPrompt(
   person: Person,
   question: Question,
-  strategy: Strategy
+  strategy: Strategy,
+  varianceMode: VarianceMode = VarianceMode.STANDARD
 ): BuiltPrompt {
   // Randomize options for choice questions (reduces order bias)
   const shuffledOptions =
@@ -178,21 +225,51 @@ export function buildPrompt(
       ? shuffle(question.options)
       : undefined
 
-  const formatInstr = formatInstruction(question, shuffledOptions)
+  const formatInstr = formatInstruction(question, shuffledOptions, varianceMode)
   const personaBlock = buildPersonaBlock(person)
+
+  // Layer 1: inject cognitive profile for enhanced/two_step modes
+  const cognitiveBlock = varianceMode !== VarianceMode.STANDARD
+    ? buildCognitiveProfile(person)
+    : ''
+  const fullPersonaBlock = cognitiveBlock
+    ? `${personaBlock}\n\n${cognitiveBlock}`
+    : personaBlock
 
   let userMessage: string
 
   // Strategy C: use life story if available, otherwise fall back to A
   if (strategy === Strategy.C && person.life_story) {
     const lifeStory = person.life_story.substring(0, MAX_LIFE_STORY_CHARS)
-    userMessage = `${personaBlock}\n\nOSOBNÍ PŘÍBĚH:\n${lifeStory}\n\nNa základě tohoto profilu a osobního příběhu odpověz na následující otázku jako tento respondent:\n${formatInstr}`
+    userMessage = `${fullPersonaBlock}\n\nOSOBNÍ PŘÍBĚH:\n${lifeStory}\n\nNa základě tohoto profilu a osobního příběhu odpověz na následující otázku jako tento respondent:\n${formatInstr}`
   } else {
     // Strategy A (or C fallback): persona only
-    userMessage = `${personaBlock}\n\nOdpověz na následující otázku jako tento respondent:\n${formatInstr}`
+    userMessage = `${fullPersonaBlock}\n\nOdpověz na následující otázku jako tento respondent:\n${formatInstr}`
   }
 
   return { system: SYSTEM_PROMPT, user: userMessage }
+}
+
+// ── P12: Competence probe for two-step mode (Layer 3) ────────────────────
+export function buildCompetenceProbe(person: Person, question: Question): string {
+  const personaBlock = buildPersonaBlock(person)
+  const cogBlock = buildCognitiveProfile(person)
+  return `${personaBlock}\n\n${cogBlock}\n\nOtázka, kterou bude tento respondent odpovídat:\n"${question.text}"\n\nJako expert na kognitivní psychologii odhadni: Jaká je pravděpodobnost (0–100 %), že TENTO KONKRÉTNÍ respondent odpoví na tuto otázku správně/přesně? Zvaž jeho vzdělání, věk a kognitivní styl.\n\nOdpověz POUZE tímto JSON:\n{"probability_correct": <číslo 0-100>, "likely_error_type": "<typ chyby, pokud by se zmýlil>"}`
+}
+
+export function extractCompetenceHint(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { probability_correct?: number; likely_error_type?: string }
+    const prob = Number(parsed.probability_correct)
+    const errorType = parsed.likely_error_type ?? 'odhad'
+    if (isNaN(prob)) return 'Kompetence respondenta nelze určit — odpověz na základě profilu.'
+    if (prob < 30) return `Respondent s velkou pravděpodobností neodpoví správně. Typická chyba: ${errorType}. Odpověz TAK, JAK BY ODPOVĚDĚL ON — pravděpodobně špatně.`
+    if (prob < 60) return `Respondent si není jistý a odpověď bude pravděpodobně přibližná nebo chybná. Typická chyba: ${errorType}.`
+    if (prob < 85) return `Respondent pravděpodobně odpoví přibližně správně, ale může se mírně odchýlit.`
+    return `Respondent s velkou pravděpodobností odpoví správně.`
+  } catch {
+    return 'Kompetence respondenta nelze určit — odpověz na základě profilu.'
+  }
 }
 
 // ── P09: Refusal detection ────────────────────────────────────────────────

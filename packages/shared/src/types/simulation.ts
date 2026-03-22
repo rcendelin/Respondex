@@ -17,6 +17,12 @@ export enum SimulationStatus {
   PARTIAL_FAILURE = 'partial_failure',
 }
 
+export enum VarianceMode {
+  STANDARD = 'standard',
+  ENHANCED = 'enhanced',
+  TWO_STEP = 'two_step',
+}
+
 export enum SupportedModel {
   GPT_54_MINI = 'gpt-5.4-mini',
   GPT_4O = 'gpt-4o',
@@ -34,6 +40,8 @@ export interface SimulationConfig {
   temperature: number
   /** Number of independent runs per person per question */
   runs_per_person: number
+  /** Variance injection mode for reducing response homogenization */
+  variance_mode?: VarianceMode
   /** Whether to run CZ-CalibrationEngine before simulation (Phase 2) */
   run_calibration?: boolean
   /** For Strategy F: additional ensemble models */
