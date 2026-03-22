@@ -341,6 +341,10 @@ export function getABTestResults(id: string): Promise<ABTestComparison> {
   return request(`/ab-tests/${encodeURIComponent(id)}/results`)
 }
 
+export async function deleteABTest(id: string): Promise<void> {
+  await request(`/ab-tests/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
 export function createABTest(params: {
   name: string
   population_id: string

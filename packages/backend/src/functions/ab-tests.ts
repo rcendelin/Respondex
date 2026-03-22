@@ -181,6 +181,19 @@ async function createABTest(req: HttpRequest): Promise<HttpResponseInit> {
   }
 }
 
+// ── DELETE /api/ab-tests/{id} ─────────────────────────────────────────────
+async function deleteABTest(req: HttpRequest): Promise<HttpResponseInit> {
+  const id = req.params['id']
+  if (!id) return { status: 400, jsonBody: { error: 'Chybí ID testu' } }
+  const svc = storage()
+  try {
+    await svc.deletePrefix(`data/ab-tests/${id}/`)
+    return { status: 204 }
+  } catch {
+    return { status: 404, jsonBody: { error: 'A/B test nenalezen' } }
+  }
+}
+
 // ── GET /api/reference-questions ─────────────────────────────────────────
 async function getReferenceQuestions(_req: HttpRequest): Promise<HttpResponseInit> {
   return { status: 200, jsonBody: REFERENCE_QUESTIONS }
@@ -214,6 +227,13 @@ app.http('createABTest', {
   authLevel: 'anonymous',
   route: 'ab-tests',
   handler: createABTest,
+})
+
+app.http('deleteABTest', {
+  methods: ['DELETE'],
+  authLevel: 'anonymous',
+  route: 'ab-tests/{id}',
+  handler: deleteABTest,
 })
 
 app.http('getReferenceQuestions', {

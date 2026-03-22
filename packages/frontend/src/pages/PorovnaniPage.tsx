@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FlaskConical, Trophy, AlertTriangle, Plus, Loader2 } from 'lucide-react'
+import { FlaskConical, Trophy, AlertTriangle, Plus, Loader2, Trash2 } from 'lucide-react'
 import type { ABTestConfig, ABTestComparison, PairwiseComparison, SimulationMeta } from '@respondex/shared'
 import { SimulationStatus } from '@respondex/shared'
 import {
-  getABTests, getABTestResults, createABTest,
+  getABTests, getABTestResults, createABTest, deleteABTest,
   getSimulations, type SimulationListItem,
 } from '../lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -344,6 +344,7 @@ export function PorovnaniPage() {
   const [selectedTestId, setSelectedTestId] = useState<string>('')
   const [comparison, setComparison] = useState<ABTestComparison | null>(null)
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string>('')
   const [showCreate, setShowCreate] = useState(false)
 
@@ -416,6 +417,27 @@ export function PorovnaniPage() {
                 ))}
               </SelectContent>
             </Select>
+            {selectedTestId && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:text-destructive"
+                disabled={deleting}
+                title="Smazat tento A/B test"
+                onClick={async () => {
+                  setDeleting(true)
+                  try {
+                    await deleteABTest(selectedTestId)
+                    setSelectedTestId('')
+                    setComparison(null)
+                    loadTests()
+                  } catch { /* ignore */ }
+                  finally { setDeleting(false) }
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
             {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           </div>
 
