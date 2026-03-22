@@ -412,30 +412,86 @@ function displayVal(val: string | number | boolean | undefined | null): string {
 }
 
 function PersonsTable({ persons }: { persons: Person[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b bg-muted/50 sticky top-0">
+            <th className="w-6 px-3 py-2" />
             {['ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj'].map((h) => (
               <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap">{h}</th>
             ))}
+            <th className="px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">Příběh</th>
           </tr>
         </thead>
         <tbody>
-          {persons.map((p) => (
-            <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20">
-              <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{p.id.substring(0, 8)}…</td>
-              <td className="px-3 py-2">{p.age}</td>
-              <td className="px-3 py-2">{p.gender}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.education)}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.marital_status)}</td>
-              <td className="px-3 py-2">{displayVal(p.demographics?.has_partner)}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.employment_status)}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.income_level)}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.region)}</td>
-            </tr>
-          ))}
+          {persons.map((p) => {
+            const isExpanded = expandedId === p.id
+            const hasStory = !!p.life_story
+            return (
+              <>
+                <tr
+                  key={p.id}
+                  className={`border-b hover:bg-muted/20 cursor-pointer transition-colors ${isExpanded ? 'bg-muted/30' : ''}`}
+                  onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                >
+                  <td className="px-3 py-2 text-muted-foreground">
+                    <ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{p.id.substring(0, 8)}…</td>
+                  <td className="px-3 py-2">{p.age}</td>
+                  <td className="px-3 py-2">{p.gender}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.education)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.marital_status)}</td>
+                  <td className="px-3 py-2">{displayVal(p.demographics?.has_partner)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.employment_status)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.income_level)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.region)}</td>
+                  <td className="px-3 py-2 text-center">
+                    {hasStory
+                      ? <Sparkles className="h-3 w-3 text-amber-500 mx-auto" aria-label="Má životní příběh" />
+                      : <span className="text-muted-foreground/40">–</span>}
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${p.id}-detail`} className="border-b bg-muted/10">
+                    <td colSpan={11} className="px-6 py-4">
+                      <div className="space-y-3">
+                        {/* Full ID */}
+                        <div className="flex gap-2 text-xs">
+                          <span className="text-muted-foreground w-24 flex-shrink-0">ID</span>
+                          <span className="font-mono">{p.id}</span>
+                        </div>
+                        {/* Custom fields */}
+                        {p.demographics?.custom_fields && Object.keys(p.demographics.custom_fields).length > 0 && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground w-24 flex-shrink-0">Vlastní pole</span>
+                            <span className="text-muted-foreground">
+                              {Object.entries(p.demographics.custom_fields)
+                                .map(([k, v]) => `${k}: ${v}`)
+                                .join(' · ')}
+                            </span>
+                          </div>
+                        )}
+                        {/* Life story */}
+                        <div className="flex gap-2 text-xs">
+                          <span className="text-muted-foreground w-24 flex-shrink-0 flex items-start gap-1">
+                            {hasStory && <Sparkles className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />}
+                            Životní příběh
+                          </span>
+                          {hasStory
+                            ? <p className="text-foreground leading-relaxed max-w-2xl">{p.life_story}</p>
+                            : <span className="text-muted-foreground italic">Příběh nebyl vygenerován. Použijte tlačítko „AI příběhy".</span>}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            )
+          })}
         </tbody>
       </table>
     </div>
