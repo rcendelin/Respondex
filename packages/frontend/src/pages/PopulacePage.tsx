@@ -734,8 +734,13 @@ export function PopulacePage() {
         </div>
       </div>
 
-      {loading && <p className="text-muted-foreground text-sm">Načítám populace…</p>}
-      {fetchError && <p className="text-destructive text-sm">{fetchError}</p>}
+      {loading && <p className="text-muted-foreground text-sm">Načítám populace… (první načtení může trvat až 30 s)</p>}
+      {fetchError && (
+        <div className="flex items-center gap-3">
+          <p className="text-destructive text-sm">{fetchError}</p>
+          <Button variant="outline" size="sm" onClick={() => void load()}>Zkusit znovu</Button>
+        </div>
+      )}
 
       {!loading && !fetchError && populations.length === 0 && (
         <Card>
