@@ -60,13 +60,24 @@ async function getABTestResults(req: HttpRequest): Promise<HttpResponseInit> {
   } catch {
     // Not yet computed — compute now
     try {
-      const config = await svc.readJson<ABTestConfig>(`data/ab-tests/${id}/config.json`)
-      const questions = await svc.readJson<Question[]>(
-        `data/questionnaires/${config.questionnaire_id}/questions.json`
-      )
-      const persons = await svc.readJson<Person[]>(
-        `data/populations/${config.population_id}/persons.json`
-      )
+      const configPath = `data/ab-tests/${id}/config.json`
+      const config = await svc.readJson<ABTestConfig>(configPath)
+
+      const questionsPath = `data/questionnaires/${config.questionnaire_id}/questions.json`
+      let questions: Question[]
+      try {
+        questions = await svc.readJson<Question[]>(questionsPath)
+      } catch {
+        return { status: 400, jsonBody: { error: `Dotazník ${config.questionnaire_id} nenalezen (${questionsPath})` } }
+      }
+
+      const personsPath = `data/populations/${config.population_id}/persons.json`
+      let persons: Person[]
+      try {
+        persons = await svc.readJson<Person[]>(personsPath)
+      } catch {
+        return { status: 400, jsonBody: { error: `Populace ${config.population_id} nenalezena (${personsPath})` } }
+      }
 
       const armResults: { arm_id: string; arm_name: string; metrics: import('@respondex/shared').ABTestMetrics }[] = []
 
