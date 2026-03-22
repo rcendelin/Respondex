@@ -510,14 +510,10 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
   const [enrichOpen, setEnrichOpen] = useState(false)
   const [enrichResult, setEnrichResult] = useState<{ enriched: number; failed: number } | null>(null)
   const [missingStories, setMissingStories] = useState(0)
-  const loadedForRef = useRef<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!population) return
-    if (loadedForRef.current !== population.id) {
-      loadedForRef.current = population.id
-      if (offset !== 0) { setOffset(0); return }
-    }
     let cancelled = false
     setLoadingPersons(true)
     setPersonsError(null)
@@ -526,7 +522,6 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
         if (!cancelled) {
           setPersons(page.persons)
           setTotal(page.total)
-          // Estimate missing stories from current page; reset when offset changes
           if (offset === 0) {
             const missingOnPage = page.persons.filter((p) => !p.life_story).length
             const ratio = page.persons.length > 0 ? missingOnPage / page.persons.length : 0
@@ -539,28 +534,26 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
       })
       .finally(() => { if (!cancelled) setLoadingPersons(false) })
     return () => { cancelled = true }
-  }, [population, offset])
+  }, [population, offset, refreshKey])
 
   function handleClose() {
     setPersons([]); setTotal(0); setOffset(0); setPersonsError(null)
-    setEnrichResult(null); setMissingStories(0)
-    loadedForRef.current = null
+    setEnrichResult(null); setMissingStories(0); setRefreshKey(0)
     onClose()
   }
 
   function handleEnriched(result: { enriched: number; failed: number }) {
     setEnrichOpen(false)
     setEnrichResult(result)
-    // Re-fetch persons to show updated life_story counts
-    loadedForRef.current = null
     setOffset(0)
+    setRefreshKey((k) => k + 1)
     onPopulationChanged()
   }
 
   function handleGenerated() {
     setGenerateOpen(false)
-    loadedForRef.current = null
     setOffset(0)
+    setRefreshKey((k) => k + 1)
     onPopulationChanged()
   }
 
@@ -589,11 +582,11 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
               <div className="flex gap-2 flex-shrink-0">
                 <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)}>
                   <Wand2 className="h-4 w-4 mr-1.5" />
-                  Generovat
+                  Generovat osoby
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setEnrichOpen(true)} disabled={total === 0}>
                   <Sparkles className="h-4 w-4 mr-1.5" />
-                  AI příběhy
+                  Generovat příběhy (AI)
                 </Button>
               </div>
             </div>
