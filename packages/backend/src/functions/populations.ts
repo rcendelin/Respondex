@@ -486,7 +486,7 @@ async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promi
     if (!metaExists) throw new NotFoundError(`Populace "${id}" nebyla nalezena`)
 
     const body = await req.json() as { model?: unknown; only_missing?: unknown }
-    const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'gpt-4o-mini'
+    const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'gpt-5.4-mini'
     const onlyMissing = body.only_missing !== false // default true
 
     const persons = await svc.readJson<Person[]>(`data/populations/${id}/persons.json`)

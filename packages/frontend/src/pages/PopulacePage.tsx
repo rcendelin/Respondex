@@ -300,12 +300,13 @@ interface EnrichDialogProps {
 }
 
 const AI_MODELS = [
-  { value: 'gpt-4o-mini', label: 'GPT-4o mini (rychlý, ekonomický)' },
-  { value: 'gpt-4o', label: 'GPT-4o (pomalejší, vyšší kvalita)' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini (výchozí)' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
+  { value: 'gpt-4o', label: 'GPT-4o (vyšší kvalita)' },
 ]
 
 function EnrichDialog({ populationId, totalPersons, missingStories, open, onClose, onEnriched }: EnrichDialogProps) {
-  const [model, setModel] = useState('gpt-4o-mini')
+  const [model, setModel] = useState('gpt-5.4-mini')
   const [onlyMissing, setOnlyMissing] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

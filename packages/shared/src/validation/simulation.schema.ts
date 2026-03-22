@@ -21,7 +21,7 @@ export const SimulationConfigSchema = z.object({
         message: `Model musí být jeden z: ${Object.values(SupportedModel).join(', ')}`,
       }),
     })
-    .default(SupportedModel.GPT_4O_MINI),
+    .default(SupportedModel.GPT_54_MINI),
   temperature: z
     .number()
     .min(0, 'Teplota musí být minimálně 0.0')
