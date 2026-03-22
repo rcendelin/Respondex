@@ -18,8 +18,19 @@ export interface ParsedChunkMessage {
  */
 export function parseChunkMessage(messageText: unknown): ParsedChunkMessage {
   try {
-    const raw = typeof messageText === 'string' ? messageText : String(messageText)
-    const parsed = JSON.parse(raw) as unknown
+    // Azure Functions v4 SDK may deserialize queue messages automatically (object),
+    // or pass them as raw strings depending on the content type.
+    // Handle both: if already an object, use it directly; if string, parse it.
+    let parsed: unknown
+    if (typeof messageText === 'string') {
+      parsed = JSON.parse(messageText)
+    } else if (typeof messageText === 'object' && messageText !== null) {
+      parsed = messageText
+    } else {
+      // Unexpected type — attempt string coercion as last resort
+      parsed = JSON.parse(String(messageText))
+    }
+
     const result = SimulationChunkMessageSchema.safeParse(parsed)
     if (result.success) {
       return { msg: result.data as SimulationChunkMessage, simulationId: result.data.simulation_id }
