@@ -63,20 +63,112 @@ function toBoolean(val: string | number | boolean): boolean {
   return s === 'ano' || s === 'yes' || s === '1' || s === 'true'
 }
 
+// Alias maps: common alternative spellings / phrasings → canonical enum values.
+// Allows importing real-world datasets that use different terminology.
+const EDUCATION_ALIASES: Record<string, string> = {
+  // ČSÚ / MPSV / school-registry terminology
+  'základní vzdělání':                         'Základní',
+  'neúplné základní vzdělání':                 'Základní',
+  'bez vzdělání':                              'Základní',
+  'střední bez maturity':                      'Vyučení',
+  'střední bez maturity (vč. vyučení)':        'Vyučení',
+  'vyučení bez maturity':                      'Vyučení',
+  'střední odborné bez maturity':              'Vyučení',
+  'vyučen/a':                                  'Vyučení',
+  'úplné střední s maturitou':                 'S maturitou',
+  'úplné střední s maturitou (vč. nástavb.)':  'S maturitou',
+  'střední s maturitou':                       'S maturitou',
+  'maturita':                                  'S maturitou',
+  'středoškolské s maturitou':                 'S maturitou',
+  'vyšší odborné (vošs)':                      'Vyšší odborné',
+  'vyšší odborná škola':                       'Vyšší odborné',
+  'voš':                                       'Vyšší odborné',
+  'vysokoškolské (bc.)':                       'Vysokoškolské',
+  'vysokoškolské (mgr./ing. a výše)':          'Vysokoškolské',
+  'vysokoškolské vzdělání':                    'Vysokoškolské',
+  'vš':                                        'Vysokoškolské',
+  'univerzitní':                               'Vysokoškolské',
+}
+
+const EMPLOYMENT_ALIASES: Record<string, string> = {
+  'zaměstnanec/kyně':                          'Zaměstnaný/á',
+  'zaměstnanec':                               'Zaměstnaný/á',
+  'zaměstnaná':                                'Zaměstnaný/á',
+  'zaměstnaný':                                'Zaměstnaný/á',
+  'živnostník/ce':                             'Podnikatel/ka (OSVČ)',
+  'osvč':                                      'Podnikatel/ka (OSVČ)',
+  'podnikatel':                                'Podnikatel/ka (OSVČ)',
+  'podnikatelka':                              'Podnikatel/ka (OSVČ)',
+  'nezaměstnaný':                              'Nezaměstnaný/á',
+  'nezaměstnaná':                              'Nezaměstnaný/á',
+  'uchazeč o zaměstnání':                      'Nezaměstnaný/á',
+  'student':                                   'Student/ka',
+  'studentka':                                 'Student/ka',
+  'žák/žákyně':                                'Student/ka',
+  'v důchodu':                                 'Důchodce/kyně',
+  'důchodce':                                  'Důchodce/kyně',
+  'důchodkyně':                                'Důchodce/kyně',
+  'starobní důchodce':                         'Důchodce/kyně',
+  'starobní důchodkyně':                       'Důchodce/kyně',
+  'invalidní důchodce':                        'Důchodce/kyně',
+  'na mateřské':                               'Mateřská/rodičovská dovolená',
+  'na rodičovské':                             'Mateřská/rodičovská dovolená',
+  'mateřská dovolená':                         'Mateřská/rodičovská dovolená',
+  'rodičovská dovolená':                       'Mateřská/rodičovská dovolená',
+  'md/rd':                                     'Mateřská/rodičovská dovolená',
+}
+
+const INCOME_ALIASES: Record<string, string> = {
+  'nízký příjem':        'Nízký',
+  'nízké příjmy':        'Nízký',
+  'pod průměrem':        'Spíše nižší',
+  'spíše nižší příjem':  'Spíše nižší',
+  'průměrný příjem':     'Střední',
+  'střední příjem':      'Střední',
+  'průměr':              'Střední',
+  'spíše vyšší příjem':  'Spíše vyšší',
+  'nadprůměrný příjem':  'Spíše vyšší',
+  'vysoký příjem':       'Vysoký',
+  'nadprůměr':           'Vysoký',
+}
+
+const MARITAL_ALIASES: Record<string, string> = {
+  'svobodný':              'Svobodný/á',
+  'svobodná':              'Svobodný/á',
+  'ženatý':                'Ženatý/Vdaná',
+  'vdaná':                 'Ženatý/Vdaná',
+  'ženatý/vdaná':          'Ženatý/Vdaná',
+  'manžel/ka':             'Ženatý/Vdaná',
+  'rozvedený':             'Rozvedený/á',
+  'rozvedená':             'Rozvedený/á',
+  'ovdovělý':              'Ovdovělý/á',
+  'ovdovělá':              'Ovdovělý/á',
+  'vdovec':                'Ovdovělý/á',
+  'vdova':                 'Ovdovělý/á',
+  'registrované partnerství': 'Registrované partnerství',
+  'partner/ka':            'Registrované partnerství',
+}
+
+// Unified alias lookup: tries aliases first, then falls back to exact enum match.
+function resolveAlias(aliases: Record<string, string>, val: string): string {
+  return aliases[val.toLowerCase()] ?? val
+}
+
 function toEnum<T extends string>(
   enumObj: Record<string, T>,
   val: string,
   row: number,
-  column: string
+  column: string,
+  aliases?: Record<string, string>
 ): { value?: T; error?: ParseError } {
   const values = Object.values(enumObj) as T[]
-  const normalized = val.trim()
+  const normalized = aliases ? resolveAlias(aliases, val.trim()) : val.trim()
   if (values.includes(normalized as T)) return { value: normalized as T }
   return {
     error: {
       row,
       column,
-      message: `Řádek ${row}: Neplatná hodnota sloupce "${column}": "${normalized}". Povolené hodnoty: ${values.join(', ')}`,
+      message: `Řádek ${row}: Neplatná hodnota sloupce "${column}": "${val.trim()}". Povolené hodnoty: ${values.join(', ')}`,
     },
   }
 }
@@ -209,22 +301,22 @@ export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<P
       const strVal = String(rawVal).trim()
 
       if (fieldName === 'education') {
-        const result = toEnum(Education, strVal, rowNum, xlsxCol)
+        const result = toEnum(Education, strVal, rowNum, xlsxCol, EDUCATION_ALIASES)
         if (result.error) errors.push(result.error)
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         else { demographics.education = result.value!; hasDemographics = true }
       } else if (fieldName === 'marital_status') {
-        const result = toEnum(MaritalStatus, strVal, rowNum, xlsxCol)
+        const result = toEnum(MaritalStatus, strVal, rowNum, xlsxCol, MARITAL_ALIASES)
         if (result.error) errors.push(result.error)
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         else { demographics.marital_status = result.value!; hasDemographics = true }
       } else if (fieldName === 'employment_status') {
-        const result = toEnum(EmploymentStatus, strVal, rowNum, xlsxCol)
+        const result = toEnum(EmploymentStatus, strVal, rowNum, xlsxCol, EMPLOYMENT_ALIASES)
         if (result.error) errors.push(result.error)
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         else { demographics.employment_status = result.value!; hasDemographics = true }
       } else if (fieldName === 'income_level') {
-        const result = toEnum(IncomeLevel, strVal, rowNum, xlsxCol)
+        const result = toEnum(IncomeLevel, strVal, rowNum, xlsxCol, INCOME_ALIASES)
         if (result.error) errors.push(result.error)
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         else { demographics.income_level = result.value!; hasDemographics = true }
