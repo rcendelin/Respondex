@@ -1,4 +1,9 @@
 {
+  // TODO: tsconfig kompiluje do dist/backend/src/ místo dist/ (kvůli rootDirs + include "../shared/src/**/*").
+  // Výsledkem je "main": "dist/backend/src/index.js" v package.json místo "dist/index.js".
+  // Správné řešení: použít "rootDir": "src" + importovat @respondex/shared jako externí balíček (z dist),
+  // nebo použít "paths" + "baseUrl" bez include shared/src. Vyžaduje rebuild shared před backendem (již funguje v CI).
+  // Viz: https://www.typescriptlang.org/tsconfig#rootDir
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDirs": ["src", "../shared/src"],
