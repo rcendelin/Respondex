@@ -34,13 +34,6 @@ async function processSimulationChunk(
   // This enforces UUID format on all ID fields (prevents path traversal) and validates
   // chunk_number format, model whitelist, and all config bounds. Invalid messages are
   // thrown to trigger Azure dead-letter (maxDequeueCount = 5).
-  // Diagnostic logging to identify exact parse failure
-  const msgType = typeof messageText
-  const msgPreview = msgType === 'string'
-    ? (messageText as string).substring(0, 200)
-    : JSON.stringify(messageText).substring(0, 200)
-  ctx.log(`[diag] messageText type=${msgType} preview=${msgPreview}`)
-
   const { msg: parsedMsg } = parseChunkMessage(messageText)
   if (!parsedMsg) {
     const err = new Error('Invalid chunk message format')
