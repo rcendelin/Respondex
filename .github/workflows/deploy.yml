@@ -55,17 +55,24 @@ jobs:
 
       - name: Prepare backend deployment package
         run: |
-          mkdir -p deploy-backend/dist
-          # Compiled JS into dist/ (matches "main": "dist/index.js")
-          cp -r packages/backend/dist/. deploy-backend/dist/
-          # Azure Functions runtime config + package.json at root
+          mkdir -p deploy-backend
+          # Compiled JS — preserve dist/backend/src structure (matches main in package.json)
+          cp -r packages/backend/dist deploy-backend/dist
+          # Azure Functions runtime config
           cp packages/backend/host.json deploy-backend/
-          cp packages/backend/package.json deploy-backend/
-          # node_modules from pnpm workspace (already resolved)
-          mkdir -p deploy-backend/node_modules
-          cp -r packages/backend/node_modules/. deploy-backend/node_modules/
-          # Remove workspace symlink — shared is compiled inline into dist/
-          rm -rf deploy-backend/node_modules/@respondex
+          # package.json with workspace:* replaced by file path for npm install
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('packages/backend/package.json','utf8'));
+            // Replace workspace:* with path to built shared package
+            pkg.dependencies['@respondex/shared'] = 'file:../packages/shared';
+            // Remove devDependencies entirely
+            delete pkg.devDependencies;
+            fs.writeFileSync('deploy-backend/package.json', JSON.stringify(pkg, null, 2));
+          "
+          cd deploy-backend
+          npm install --omit=dev --ignore-scripts
+          cd ..
 
       - name: Deploy Frontend to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
