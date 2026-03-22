@@ -2,7 +2,7 @@
   "name": "@respondex/backend",
   "version": "0.0.1",
   "private": true,
-  "main": "dist/index.js",
+  "main": "dist/backend/src/index.js",
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit",
