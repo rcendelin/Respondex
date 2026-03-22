@@ -6,14 +6,14 @@
   "routes": [
     {
       "route": "/api/*",
-      "rewrite": "https://func-respondex-dev.azurewebsites.net/api/{*}"
+      "allowedRoles": ["anonymous"]
     }
   ],
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://func-respondex-dev.azurewebsites.net; object-src 'none'; base-uri 'self'; form-action 'self'"
   },
   "mimeTypes": {
     ".json": "application/json",

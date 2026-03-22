@@ -52,6 +52,8 @@ jobs:
 
       - name: Build frontend
         run: pnpm --filter @respondex/frontend build
+        env:
+          VITE_API_BASE_URL: https://func-respondex-dev.azurewebsites.net/api
 
       - name: Prepare backend deployment package
         run: |
