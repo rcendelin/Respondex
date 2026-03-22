@@ -1,7 +1,7 @@
 import { app, type HttpRequest, type HttpResponseInit } from '@azure/functions'
 import { randomUUID } from 'crypto'
 import { BlobStorageService } from '../services/storage.js'
-import { computeArmMetrics, compareArms } from '../services/ab-test-engine.js'
+import { computeAndCompareArms } from '../services/ab-test-engine.js'
 import type {
   ABTestConfig,
   ABTestComparison,
@@ -79,10 +79,10 @@ async function getABTestResults(req: HttpRequest): Promise<HttpResponseInit> {
         return { status: 400, jsonBody: { error: `Populace ${config.population_id} nenalezena (${personsPath})` } }
       }
 
-      const armResults: { arm_id: string; arm_name: string; metrics: import('@respondex/shared').ABTestMetrics }[] = []
+      // Load responses for each arm
+      const armData: { arm_id: string; arm_name: string; responses: SimulationResponse[] }[] = []
 
       for (const arm of config.arms) {
-        // Load all simulation responses for this arm
         const allResponses: SimulationResponse[] = []
         for (const simId of arm.simulation_ids) {
           try {
@@ -95,26 +95,26 @@ async function getABTestResults(req: HttpRequest): Promise<HttpResponseInit> {
             // Simulation not found or incomplete — skip
           }
         }
-
-        if (allResponses.length === 0) continue
-
-        const metrics = computeArmMetrics(
-          allResponses,
-          config.reference_questions,
-          questions,
-          persons,
-        )
-
-        arm.metrics = metrics
-        armResults.push({ arm_id: arm.id, arm_name: arm.name, metrics })
+        if (allResponses.length > 0) {
+          armData.push({ arm_id: arm.id, arm_name: arm.name, responses: allResponses })
+        }
       }
 
-      if (armResults.length < 2) {
-        return { status: 400, jsonBody: { error: 'Nedostatek dokončených ramen pro srovnání' } }
+      if (armData.length < 2) {
+        return { status: 400, jsonBody: { error: `Nedostatek dokončených ramen pro srovnání (${armData.length} z ${config.arms.length})` } }
       }
 
-      const comparison = compareArms(armResults, config.arms[0]?.id ?? '')
+      const baselineArmId = config.arms[0]?.id ?? armData[0]!.arm_id
+      const { armMetrics, comparison } = computeAndCompareArms(
+        armData, questions, persons, config.reference_questions, baselineArmId,
+      )
       comparison.test_id = id
+
+      // Update arm metrics in config
+      for (const am of armMetrics) {
+        const arm = config.arms.find((a) => a.id === am.arm_id)
+        if (arm) arm.metrics = am.metrics
+      }
 
       // Cache results
       await svc.writeJson(`data/ab-tests/${id}/comparison.json`, comparison)
