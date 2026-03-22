@@ -283,7 +283,7 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   }
   properties: {
     repositoryUrl: 'https://github.com/rcendelin/Respondex'
-    branch: 'main'
+    branch: 'master'
     buildProperties: {
       appLocation: 'packages/frontend'
       outputLocation: 'dist'
