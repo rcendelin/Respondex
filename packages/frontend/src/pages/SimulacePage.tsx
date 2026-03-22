@@ -52,7 +52,10 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   const [temperature, setTemperature] = useState('0.7')
   const [runsPerPerson, setRunsPerPerson] = useState('3')
   const [varianceMode, setVarianceMode] = useState<string>(VarianceMode.ENHANCED)
+  const [batchModes, setBatchModes] = useState<Set<string>>(new Set())
+  const [batchMode, setBatchMode] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -72,11 +75,20 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
   function reset() {
     setPopulationId(''); setQuestionnaireId(''); setStrategy(Strategy.A)
     setModel(SupportedModel.GPT_54_MINI); setTemperature('0.7'); setRunsPerPerson('3')
-    setVarianceMode(VarianceMode.ENHANCED)
-    setError(null); setLoading(false)
+    setVarianceMode(VarianceMode.ENHANCED); setBatchModes(new Set()); setBatchMode(false)
+    setError(null); setLoading(false); setBatchProgress(null)
   }
 
   function handleClose() { reset(); onClose() }
+
+  function toggleBatchMode(mode: string) {
+    setBatchModes((prev) => {
+      const next = new Set(prev)
+      if (next.has(mode)) next.delete(mode)
+      else next.add(mode)
+      return next
+    })
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -87,21 +99,30 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
     if (isNaN(temp) || temp < 0 || temp > 2) { setError('Teplota musí být 0.0–2.0.'); return }
     if (isNaN(runs) || runs < 1 || runs > 10) { setError('Počet runs musí být 1–10.'); return }
 
-    setLoading(true); setError(null)
+    const modes = batchMode && batchModes.size > 0
+      ? [...batchModes]
+      : [varianceMode]
+
+    if (modes.length === 0) { setError('Vyberte alespoň jeden režim variability.'); return }
+
+    setLoading(true); setError(null); setBatchProgress({ done: 0, total: modes.length })
     try {
-      await startSimulation({
-        population_id: populationId,
-        questionnaire_id: questionnaireId,
-        strategy: strategy as Strategy,
-        model: model as SupportedModel,
-        temperature: temp,
-        runs_per_person: runs,
-        variance_mode: varianceMode as VarianceMode,
-      })
+      for (let i = 0; i < modes.length; i++) {
+        setBatchProgress({ done: i, total: modes.length })
+        await startSimulation({
+          population_id: populationId,
+          questionnaire_id: questionnaireId,
+          strategy: strategy as Strategy,
+          model: model as SupportedModel,
+          temperature: temp,
+          runs_per_person: runs,
+          variance_mode: modes[i] as VarianceMode,
+        })
+      }
       reset(); onStarted()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Neočekávaná chyba.')
-      setLoading(false)
+      setLoading(false); setBatchProgress(null)
     }
   }
 
@@ -185,20 +206,62 @@ function NewSimulationDialog({ open, onClose, onStarted }: NewSimDialogProps) {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>Režim variability odpovědí</Label>
-            <Select value={varianceMode} onValueChange={setVarianceMode} disabled={loading}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
+            <div className="flex items-center justify-between">
+              <Label>Režim variability odpovědí</Label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={batchMode}
+                  onChange={(e) => setBatchMode(e.target.checked)}
+                  disabled={loading}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-xs text-muted-foreground">Více režimů najednou</span>
+              </label>
+            </div>
+            {batchMode ? (
+              <div className="space-y-1 border rounded-md p-2">
                 {varianceModeOptions.map((v) => (
-                  <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+                  <label key={v.value} className="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-accent rounded px-1">
+                    <input
+                      type="checkbox"
+                      checked={batchModes.has(v.value)}
+                      onChange={() => toggleBatchMode(v.value)}
+                      disabled={loading}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">{v.label}</span>
+                  </label>
                 ))}
-              </SelectContent>
-            </Select>
+                {batchModes.size > 0 && (
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Spustí {batchModes.size} simulací paralelně se stejným nastavením, jen s jiným režimem.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <Select value={varianceMode} onValueChange={setVarianceMode} disabled={loading}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {varianceModeOptions.map((v) => (
+                    <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>Zrušit</Button>
-            <Button type="submit" disabled={loading}>{loading ? 'Spouštím…' : 'Spustit simulaci'}</Button>
+            <Button type="submit" disabled={loading}>
+              {loading
+                ? batchProgress
+                  ? `Spouštím ${batchProgress.done + 1}/${batchProgress.total}…`
+                  : 'Spouštím…'
+                : batchMode && batchModes.size > 1
+                  ? `Spustit ${batchModes.size} simulací`
+                  : 'Spustit simulaci'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
