@@ -345,7 +345,8 @@ export function createABTest(params: {
   name: string
   population_id: string
   questionnaire_id: string
-  arms: { name: string; variance_mode: string }[]
+  arms: { name: string; variance_mode: string; simulation_id: string }[]
+  simulation_ids: string[]
 }): Promise<{ id: string }> {
   return request('/ab-tests', { method: 'POST', body: JSON.stringify(params) })
 }

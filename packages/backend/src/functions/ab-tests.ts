@@ -124,7 +124,8 @@ async function createABTest(req: HttpRequest): Promise<HttpResponseInit> {
       description?: string
       population_id?: string
       questionnaire_id?: string
-      arms?: { name: string; variance_mode: string }[]
+      arms?: { name: string; variance_mode: string; simulation_id: string }[]
+      simulation_ids?: string[]
     }
 
     if (!body.name || !body.population_id || !body.questionnaire_id) {
@@ -145,7 +146,7 @@ async function createABTest(req: HttpRequest): Promise<HttpResponseInit> {
         name: a.name,
         description: `Variance mode: ${a.variance_mode}`,
         config_override: { variance_mode: a.variance_mode as any },
-        simulation_ids: [],
+        simulation_ids: a.simulation_id ? [a.simulation_id] : [],
       })),
       base_config: {
         population_id: body.population_id,
@@ -157,7 +158,7 @@ async function createABTest(req: HttpRequest): Promise<HttpResponseInit> {
       },
       runs_per_person: 3,
       replications: 1,
-      status: 'pending',
+      status: 'completed',
     }
 
     const svc = storage()

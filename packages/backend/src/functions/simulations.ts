@@ -103,6 +103,7 @@ async function createSimulation(req: HttpRequest, ctx: InvocationContext): Promi
       model: config.model,
       temperature: config.temperature,
       runs_per_person: config.runs_per_person,
+      ...(config.variance_mode !== undefined ? { variance_mode: config.variance_mode } : {}),
       ...(config.run_calibration === true ? { run_calibration: true } : {}),
       ...(config.ensemble_models !== undefined ? { ensemble_models: config.ensemble_models } : {}),
     }
