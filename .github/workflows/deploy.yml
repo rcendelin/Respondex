@@ -53,6 +53,16 @@ jobs:
       - name: Build frontend
         run: pnpm --filter @respondex/frontend build
 
+      - name: Prepare backend deployment package
+        run: |
+          mkdir -p deploy-backend
+          cp -r packages/backend/dist/* deploy-backend/
+          cp packages/backend/host.json deploy-backend/
+          cp packages/backend/package.json deploy-backend/
+          cd deploy-backend
+          npm install --omit=dev --ignore-scripts
+          cd ..
+
       - name: Deploy Frontend to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
@@ -67,6 +77,6 @@ jobs:
         uses: Azure/functions-action@4c708484940839593f2d74df7d2767df709ac3c2 # v1.5.2
         with:
           app-name: ${{ env.FUNCTION_APP_NAME }}
-          package: packages/backend/dist
+          package: deploy-backend
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
           respect-funcignore: true
