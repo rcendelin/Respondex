@@ -76,3 +76,21 @@ jobs:
           package: deploy-backend
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
           respect-funcignore: true
+
+      # Workaround: Azure Functions Consumption plan sometimes fails to restart
+      # the Node.js worker after deploy (gRPC UNAVAILABLE error). Hitting the
+      # health endpoint forces a cold start with fresh worker initialization.
+      - name: Warm up Function App after deploy
+        run: |
+          echo "Waiting 15s for deploy to settle..."
+          sleep 15
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ env.FUNCTION_APP_NAME }}.azurewebsites.net/api/populations" || true)
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Function App is healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::Function App did not respond with 200 after 5 attempts — may need manual restart"
