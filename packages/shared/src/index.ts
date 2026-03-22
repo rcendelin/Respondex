@@ -20,6 +20,7 @@ export { assignNumeracyLevel, getNumeracyDistribution } from './numeracy-assigne
 // Behavioral parameters
 export { BEHAVIORAL_PARAMS, getBehavioralInstructions } from './data/numeracy-behavioral-params.js'
 export type { BehaviorParams } from './data/numeracy-behavioral-params.js'
+export { REFERENCE_QUESTIONS } from './data/reference-questions.js'
 
 // Validation schemas
 export * from './validation/person.schema.js'

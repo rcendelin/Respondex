@@ -8,6 +8,9 @@ import type {
   SimulationConfig,
   AnalyticsResult,
   NumeracyReferenceDataset,
+  ABTestConfig,
+  ABTestComparison,
+  ReferenceQuestion,
 } from '@respondex/shared'
 
 // Local types matching the backend API shapes (not exported from @respondex/shared)
@@ -318,6 +321,33 @@ export async function downloadTemplate(type: 'population' | 'questionnaire'): Pr
 
 export function getNumeracyReference(): Promise<NumeracyReferenceDataset> {
   return request('/reference/numeracy')
+}
+
+export function getReferenceQuestions(): Promise<ReferenceQuestion[]> {
+  return request('/reference/questions')
+}
+
+// ── A/B Tests ─────────────────────────────────────────────────────────────
+
+export function getABTests(): Promise<ABTestConfig[]> {
+  return request('/ab-tests')
+}
+
+export function getABTest(id: string): Promise<ABTestConfig> {
+  return request(`/ab-tests/${encodeURIComponent(id)}`)
+}
+
+export function getABTestResults(id: string): Promise<ABTestComparison> {
+  return request(`/ab-tests/${encodeURIComponent(id)}/results`)
+}
+
+export function createABTest(params: {
+  name: string
+  population_id: string
+  questionnaire_id: string
+  arms: { name: string; variance_mode: string }[]
+}): Promise<{ id: string }> {
+  return request('/ab-tests', { method: 'POST', body: JSON.stringify(params) })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

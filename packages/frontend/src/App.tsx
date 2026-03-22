@@ -5,6 +5,7 @@ import { DotaznikyPage } from './pages/DotaznikyPage'
 import { SimulacePage } from './pages/SimulacePage'
 import { VysledkyPage } from './pages/VysledkyPage'
 import { ReferencePage } from './pages/ReferencePage'
+import { PorovnaniPage } from './pages/PorovnaniPage'
 import { Toaster } from './components/ui/toaster'
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           <Route path="simulace" element={<SimulacePage />} />
           <Route path="vysledky" element={<VysledkyPage />} />
           <Route path="reference" element={<ReferencePage />} />
+          <Route path="porovnani" element={<PorovnaniPage />} />
         </Route>
       </Routes>
       <Toaster />
