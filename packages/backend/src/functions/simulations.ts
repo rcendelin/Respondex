@@ -320,6 +320,57 @@ async function getSimulationResults(req: HttpRequest, ctx: InvocationContext): P
   }
 }
 
+// ── PATCH /api/simulations/{id}/force-complete ───────────────────────────
+async function forceCompleteSimulation(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const id = requireUUID(req.params['id'])
+    const svc = storage()
+
+    const metaPath = `data/simulations/${id}/meta.json`
+    const metaExists = await svc.blobExists(metaPath)
+    if (!metaExists) throw new NotFoundError('Simulace nebyla nalezena')
+
+    const meta = await svc.readJson<SimulationMeta>(metaPath)
+    if (meta.status === SimulationStatus.COMPLETED) {
+      return { status: 200, jsonBody: { message: 'Simulace je již dokončená', simulation_id: id } }
+    }
+    if (meta.status !== SimulationStatus.RUNNING) {
+      throw new ValidationError(`Simulaci ve stavu "${meta.status}" nelze force-complete`)
+    }
+
+    // Count actually existing chunk files
+    const blobs = await svc.listBlobs(`data/simulations/${id}/responses/`)
+    const chunkBlobs = blobs.filter((b) => b.includes('/responses/chunk-') && b.endsWith('.json'))
+
+    const newStatus = chunkBlobs.length === meta.total_chunks
+      ? SimulationStatus.COMPLETED
+      : SimulationStatus.PARTIAL_FAILURE
+
+    const updatedMeta: SimulationMeta = {
+      ...meta,
+      status: newStatus,
+      completed_chunks: chunkBlobs.length,
+      completed_at: new Date().toISOString(),
+    }
+    await svc.writeJson(metaPath, updatedMeta)
+
+    ctx.log(`Simulation ${id} force-completed: ${chunkBlobs.length}/${meta.total_chunks} chunks, status=${newStatus}`)
+
+    return {
+      status: 200,
+      jsonBody: {
+        simulation_id: id,
+        status: newStatus,
+        completed_chunks: chunkBlobs.length,
+        total_chunks: meta.total_chunks,
+        message: `Simulace označena jako ${newStatus} (${chunkBlobs.length}/${meta.total_chunks} chunků)`,
+      },
+    }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Route registrations ────────────────────────────────────────────────────
 app.http('createSimulation', {
   methods: ['POST'],
@@ -361,4 +412,11 @@ app.http('getSimulationResults', {
   authLevel: 'anonymous',
   route: 'simulations/{id}/results',
   handler: getSimulationResults,
+})
+
+app.http('forceCompleteSimulation', {
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  route: 'simulations/{id}/force-complete',
+  handler: forceCompleteSimulation,
 })

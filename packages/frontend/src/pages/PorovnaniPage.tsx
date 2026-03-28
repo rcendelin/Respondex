@@ -57,7 +57,7 @@ function CreateTestDialog({
           const list = Array.isArray(data)
             ? data
             : (data as unknown as { simulations: SimulationListItem[] }).simulations ?? []
-          setSimulations(list.filter((s) => s.status === SimulationStatus.COMPLETED))
+          setSimulations(list.filter((s) => s.status === SimulationStatus.COMPLETED || s.status === SimulationStatus.PARTIAL_FAILURE))
         })
         .catch(() => setSimulations([]))
       setSelectedSimIds(new Set())

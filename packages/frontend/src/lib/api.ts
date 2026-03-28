@@ -261,6 +261,10 @@ export function startSimulation(config: SimulationConfig): Promise<{ id: string;
   })
 }
 
+export function forceCompleteSimulation(id: string): Promise<{ simulation_id: string; status: string; completed_chunks: number; total_chunks: number; message: string }> {
+  return request(`/simulations/${encodeURIComponent(id)}/force-complete`, { method: 'PATCH' })
+}
+
 export async function deleteSimulation(id: string): Promise<void> {
   await request(`/simulations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

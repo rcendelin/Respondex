@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { PlayCircle, Plus, Trash2 } from 'lucide-react'
+import { PlayCircle, Plus, Trash2, CheckCircle2 } from 'lucide-react'
 import { Strategy, SimulationStatus, SupportedModel, VarianceMode } from '@respondex/shared'
 import {
   getPopulations, getQuestionnaires, getSimulations, startSimulation,
-  deleteSimulation, getSimulationStatus,
+  deleteSimulation, forceCompleteSimulation, getSimulationStatus,
   type PopulationListItem, type QuestionnaireListItem, type SimulationListItem,
 } from '../lib/api'
 import { Button } from '../components/ui/button'
@@ -285,6 +285,7 @@ export function SimulacePage() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [forcingId, setForcingId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
@@ -338,6 +339,13 @@ export function SimulacePage() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
   }, [simulations])
+
+  async function handleForceComplete(id: string) {
+    setForcingId(id)
+    try { await forceCompleteSimulation(id); void load() }
+    catch { /* non-critical */ }
+    finally { setForcingId(null) }
+  }
 
   async function handleDelete(id: string) {
     setDeletingId(id)
@@ -398,6 +406,13 @@ export function SimulacePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {sim.status === SimulationStatus.RUNNING && (
+                        <Button variant="ghost" size="icon" title="Vynutit dokončení"
+                          disabled={forcingId === sim.id}
+                          onClick={() => handleForceComplete(sim.id)}>
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" title="Smazat simulaci"
                         className="text-destructive hover:text-destructive"
                         disabled={deletingId === sim.id || sim.status === SimulationStatus.RUNNING}
