@@ -31,12 +31,23 @@ const CHART_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0
 
 // ── Frequency chart ────────────────────────────────────────────────────────
 
+const MAX_CHART_ENTRIES = 10
+
 function FrequencyChartCard({ table }: { table: FrequencyTable }) {
-  const data = table.entries.map((e) => ({
+  const sorted = [...table.entries].sort((a, b) => b.count - a.count)
+  const top = sorted.slice(0, MAX_CHART_ENTRIES)
+  const rest = sorted.slice(MAX_CHART_ENTRIES)
+  const restCount = rest.reduce((s, e) => s + e.count, 0)
+  const restPct = rest.reduce((s, e) => s + e.percentage, 0)
+
+  const data = top.map((e) => ({
     name: String(e.value).length > 20 ? String(e.value).substring(0, 20) + '…' : String(e.value),
     count: e.count,
     pct: e.percentage,
   }))
+  if (rest.length > 0) {
+    data.push({ name: `Ostatní (${rest.length})`, count: restCount, pct: Math.round(restPct * 10) / 10 })
+  }
 
   return (
     <Card>
