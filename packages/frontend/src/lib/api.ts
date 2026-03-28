@@ -297,6 +297,14 @@ export function createEmptyQuestionnaire(name: string): Promise<{ id: string }> 
   })
 }
 
+/** Rename / update questionnaire metadata */
+export function updateQuestionnaire(id: string, patch: { name?: string; description?: string }): Promise<Record<string, unknown>> {
+  return request(`/questionnaires/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
 export function saveQuestionsJson(
   id: string,
   questions: import('@respondex/shared').Question[]

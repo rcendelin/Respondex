@@ -46,7 +46,7 @@ import {
 } from 'lucide-react'
 import { QuestionType, type Question, type MatrixRow, type SkipLogic } from '@respondex/shared'
 import { QuestionSchema } from '@respondex/shared'
-import { createEmptyQuestionnaire, getQuestionnaire, saveQuestionsJson } from '@/lib/api'
+import { createEmptyQuestionnaire, getQuestionnaire, saveQuestionsJson, updateQuestionnaire } from '@/lib/api'
 
 // Draft type allows undefined for optional fields
 interface QuestionDraft {
@@ -735,6 +735,7 @@ export function QuestionnaireEditorDialog({
   onSaved,
 }: QuestionnaireEditorDialogProps) {
   const [name, setName] = useState(initialName)
+  const [originalName, setOriginalName] = useState(initialName)
   const [questions, setQuestions] = useState<QuestionDraft[]>([])
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
@@ -755,7 +756,9 @@ export function QuestionnaireEditorDialog({
       setLoading(true)
       getQuestionnaire(questionnaireId)
         .then((data) => {
-          setName(data.name ?? initialName)
+          const loadedName = data.name ?? initialName
+          setName(loadedName)
+          setOriginalName(loadedName)
           const qs = (data.questions as QuestionDraft[]) ?? []
           setQuestions(qs)
           if (qs.length > 0) setSelectedIdx(0)
@@ -879,6 +882,9 @@ export function QuestionnaireEditorDialog({
         const created = await createEmptyQuestionnaire(name.trim())
         id = created.id
         setQuestionnaireIdState(id)
+      } else if (name.trim() !== originalName) {
+        // Update name if it changed
+        await updateQuestionnaire(id, { name: name.trim() })
       }
       await saveQuestionsJson(id, questions as unknown as Question[])
       onSaved()
@@ -924,11 +930,7 @@ export function QuestionnaireEditorDialog({
               placeholder="Název dotazníku"
               className="h-7 text-sm"
               maxLength={200}
-              disabled={!!questionnaireIdState}
             />
-            {questionnaireIdState && (
-              <span className="text-[11px] text-muted-foreground shrink-0">Název nelze změnit</span>
-            )}
           </div>
         </DialogHeader>
 

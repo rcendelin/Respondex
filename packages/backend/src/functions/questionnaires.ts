@@ -192,6 +192,34 @@ async function saveQuestionsJson(req: HttpRequest, ctx: InvocationContext): Prom
   }
 }
 
+// ── PATCH /api/questionnaires/{id} ────────────────────────────────────────
+async function updateQuestionnaire(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const id = requireUUID(req.params['id'])
+    const svc = storage()
+    const exists = await svc.blobExists(`data/questionnaires/${id}/meta.json`)
+    if (!exists) throw new NotFoundError(`Dotazník "${id}" nebyl nalezen`)
+
+    const body = await req.json() as { name?: string; description?: string }
+    const meta = await svc.readJson<Record<string, unknown>>(`data/questionnaires/${id}/meta.json`)
+
+    if (body.name !== undefined) {
+      const name = String(body.name).trim()
+      if (name === '') throw new ValidationError('Název dotazníku nesmí být prázdný')
+      meta['name'] = name.substring(0, 200)
+    }
+    if (body.description !== undefined) {
+      meta['description'] = String(body.description).trim().substring(0, 500) || undefined
+    }
+    meta['updated_at'] = new Date().toISOString()
+
+    await svc.writeJson(`data/questionnaires/${id}/meta.json`, meta)
+    return { status: 200, jsonBody: meta }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Register routes ────────────────────────────────────────────────────────
 app.http('questionnaires-create', {
   methods: ['POST'],
@@ -233,6 +261,13 @@ app.http('questionnaires-delete', {
   route: 'questionnaires/{id}',
   authLevel: 'anonymous',
   handler: deleteQuestionnaire,
+})
+
+app.http('questionnaires-update', {
+  methods: ['PATCH'],
+  route: 'questionnaires/{id}',
+  authLevel: 'anonymous',
+  handler: updateQuestionnaire,
 })
 
 app.http('questionnaires-save-questions', {
