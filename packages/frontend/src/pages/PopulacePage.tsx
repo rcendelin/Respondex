@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Users, Plus, Download, Trash2, FileUp, Wand2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
+import { Users, Plus, Download, Trash2, FileUp, Wand2, ChevronLeft, ChevronRight, Sparkles, Brain } from 'lucide-react'
 import {
   getPopulations, createPopulation, exportPopulation, deletePopulation, downloadTemplate,
   getPersons, generatePopulation, enrichPopulation,
   type PopulationListItem, type GenerateParams,
 } from '../lib/api'
 import type { Person } from '@respondex/shared'
+import { computeExpectedScore, scoreToLevel } from '@respondex/shared'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -413,6 +414,26 @@ function displayVal(val: string | number | boolean | undefined | null): string {
   return String(val)
 }
 
+/** Color for PIAAC score badge based on value */
+function piaacScoreColor(score: number): string {
+  if (score < 176) return 'bg-red-500/15 text-red-700 border-red-200'       // Pod úrovní 1
+  if (score < 226) return 'bg-orange-500/15 text-orange-700 border-orange-200' // Úroveň 1
+  if (score < 276) return 'bg-amber-500/15 text-amber-700 border-amber-200'   // Úroveň 2
+  if (score < 326) return 'bg-emerald-500/15 text-emerald-700 border-emerald-200' // Úroveň 3
+  if (score < 376) return 'bg-blue-500/15 text-blue-700 border-blue-200'     // Úroveň 4
+  return 'bg-purple-500/15 text-purple-700 border-purple-200'                // Úroveň 5
+}
+
+/** Short level label for PIAAC */
+function piaacLevelLabel(score: number): string {
+  if (score < 176) return '<1'
+  if (score < 226) return 'L1'
+  if (score < 276) return 'L2'
+  if (score < 326) return 'L3'
+  if (score < 376) return 'L4'
+  return 'L5'
+}
+
 function PersonsTable({ persons }: { persons: Person[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -425,6 +446,12 @@ function PersonsTable({ persons }: { persons: Person[] }) {
             {['ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj'].map((h) => (
               <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap">{h}</th>
             ))}
+            <th className="px-3 py-2 font-medium whitespace-nowrap text-left" title="PIAAC numeracy skóre (0–500)">
+              <span className="flex items-center gap-1">
+                <Brain className="h-3 w-3" />
+                PIAAC
+              </span>
+            </th>
             <th className="px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">Příběh</th>
           </tr>
         </thead>
@@ -432,6 +459,9 @@ function PersonsTable({ persons }: { persons: Person[] }) {
           {persons.map((p) => {
             const isExpanded = expandedId === p.id
             const hasStory = !!p.life_story
+            // Use stored score if available, otherwise compute expected score
+            const piaacScore = p.demographics?.piaac_score ?? computeExpectedScore(p)
+            const isEstimated = p.demographics?.piaac_score == null
             return (
               <>
                 <tr
@@ -451,6 +481,16 @@ function PersonsTable({ persons }: { persons: Person[] }) {
                   <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.employment_status)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.income_level)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.region)}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border tabular-nums ${piaacScoreColor(piaacScore)}`}
+                      title={`${isEstimated ? 'Odhad: ' : ''}${Math.round(piaacScore)} bodů (${scoreToLevel(Math.round(piaacScore))})`}
+                    >
+                      {Math.round(piaacScore)}
+                      <span className="opacity-60">{piaacLevelLabel(piaacScore)}</span>
+                      {isEstimated && <span className="opacity-40">~</span>}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-center">
                     {hasStory
                       ? <Sparkles className="h-3 w-3 text-amber-500 mx-auto" aria-label="Má životní příběh" />
@@ -459,12 +499,25 @@ function PersonsTable({ persons }: { persons: Person[] }) {
                 </tr>
                 {isExpanded && (
                   <tr key={`${p.id}-detail`} className="border-b bg-muted/10">
-                    <td colSpan={11} className="px-6 py-4">
+                    <td colSpan={12} className="px-6 py-4">
                       <div className="space-y-3">
                         {/* Full ID */}
                         <div className="flex gap-2 text-xs">
                           <span className="text-muted-foreground w-24 flex-shrink-0">ID</span>
                           <span className="font-mono">{p.id}</span>
+                        </div>
+                        {/* PIAAC score detail */}
+                        <div className="flex gap-2 text-xs items-center">
+                          <span className="text-muted-foreground w-24 flex-shrink-0">PIAAC skóre</span>
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border ${piaacScoreColor(piaacScore)}`}>
+                            <Brain className="h-3 w-3" />
+                            {Math.round(piaacScore)} bodů — {scoreToLevel(Math.round(piaacScore))}
+                          </span>
+                          {isEstimated && (
+                            <span className="text-muted-foreground italic">
+                              (odhad z demografik, přiřadí se při simulaci)
+                            </span>
+                          )}
                         </div>
                         {/* Custom fields */}
                         {p.demographics?.custom_fields && Object.keys(p.demographics.custom_fields).length > 0 && (
