@@ -34,13 +34,23 @@ export const THETA_MAP: Record<NumeracyLevel, number> = {
   [NumeracyLevel.LEVEL_5]:  2.5,
 }
 
-/** Base difficulty by question type */
+/**
+ * Base difficulty by question type.
+ *
+ * Calibrated so that a modal Czech adult (PIAAC Level 2, θ≈0) has:
+ *   - ~90% on YES_NO
+ *   - ~65% on basic NUMBER (single-step arithmetic)
+ *   - ~40% on hard NUMBER (multi-step, compound interest)
+ *
+ * PIAAC 2023 CZ reference: 47% correct on probability (Q01-type),
+ * 65% on discount (Q02-type), 53% on fractions (Q03-type).
+ */
 const DIFFICULTY_BASE: Record<string, number> = {
   [QuestionType.YES_NO]:        -1.0,
   [QuestionType.SINGLE_CHOICE]:  0.0,
   [QuestionType.MULTI_CHOICE]:   0.5,
   [QuestionType.LIKERT]:        -0.5,
-  [QuestionType.NUMBER]:         1.0,
+  [QuestionType.NUMBER]:         0.2,   // was 1.0 — far too high, caused P≈5% for average person
   [QuestionType.NPS]:           -0.3,
   [QuestionType.OPEN_TEXT]:      0.3,
   [QuestionType.RANKING]:        1.5,
@@ -50,7 +60,7 @@ const DIFFICULTY_BASE: Record<string, number> = {
 
 /** Base discrimination by question type */
 const DISCRIMINATION_BASE: Record<string, number> = {
-  [QuestionType.NUMBER]:         1.5,
+  [QuestionType.NUMBER]:         1.0,   // was 1.5 — too steep, small θ differences → huge P swings
   [QuestionType.RANKING]:        1.5,
   [QuestionType.MATRIX]:         1.0,
   [QuestionType.MULTI_CHOICE]:   0.9,
@@ -76,23 +86,37 @@ export function estimateQuestionDifficulty(question: Question): ItemParams {
   let b = DIFFICULTY_BASE[question.type] ?? 0.0
   const a = DISCRIMINATION_BASE[question.type] ?? 0.7
 
-  // Difficulty modifiers based on question content
+  // Difficulty modifiers based on question content.
+  // Modifiers are smaller and capped so they don't stack to absurd levels.
+  let modifiers = 0
+
   const optCount = question.options?.length ?? 0
-  if (optCount > 5) b += 0.3
+  if (optCount > 5) modifiers += 0.2
 
-  if (question.text.length > 200) b += 0.2
+  if (question.text.length > 200) modifiers += 0.15
 
-  if (NUMERIC_CONTENT.test(question.text)) b += 0.5
+  if (NUMERIC_CONTENT.test(question.text)) modifiers += 0.3
 
-  if (CONDITIONAL_NEGATION.test(question.text)) b += 0.3
+  if (CONDITIONAL_NEGATION.test(question.text)) modifiers += 0.2
 
-  const scaleRange = (question.scale_max ?? 0) - (question.scale_min ?? 0)
-  if (scaleRange > 7) b += 0.2
+  // Scale range modifier — only for non-numeric questions (NUMBER already has base difficulty)
+  if (question.type !== QuestionType.NUMBER) {
+    const scaleRange = (question.scale_max ?? 0) - (question.scale_min ?? 0)
+    if (scaleRange > 7) modifiers += 0.15
+  }
 
-  // Boost discrimination if question has numeric content (ability matters more)
-  const aFinal = NUMERIC_CONTENT.test(question.text) && a < 1.2 ? 1.2 : a
+  // Cap total modifiers to prevent runaway difficulty
+  b += Math.min(modifiers, 0.6)
 
-  return { difficulty: b, discrimination: aFinal }
+  // For NUMBER questions with is_numeric: use correct_answer complexity as difficulty signal
+  if (question.type === QuestionType.NUMBER && question.is_numeric && question.correct_answer != null) {
+    // Multi-step problems (compound interest, fractions) are harder
+    // Heuristic: long text + numbers in text = multi-step
+    const numberCount = (question.text.match(/\d+/g) ?? []).length
+    if (numberCount >= 4) b += 0.3  // compound/multi-step (e.g., Q04 compound interest)
+  }
+
+  return { difficulty: b, discrimination: a }
 }
 
 /**

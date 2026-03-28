@@ -129,6 +129,11 @@ function generateIncorrectAnswer(
   const scaleMin = question.scale_min ?? 0
   const scaleMax = question.scale_max ?? correctAnswer * 10
 
+  // Compute a "reasonable" error range around the correct answer.
+  // The full scale_max (e.g., 1,000,000 for Q01) produces absurd errors
+  // like 999,900 or 500,000. Real humans err within ~5× of the correct answer.
+  const reasonableRange = computeReasonableErrorRange(correctAnswer, scaleMin, scaleMax)
+
   let answer: number
 
   switch (errorType) {
@@ -139,22 +144,22 @@ function generateIncorrectAnswer(
       answer = generateMagnitudeError(correctAnswer)
       break
     case ErrorType.COMPLEMENT:
-      answer = generateComplementError(correctAnswer, scaleMin, scaleMax, question.text)
+      answer = generateComplementError(correctAnswer, question.text)
       break
     case ErrorType.RANDOM_GUESS:
-      answer = generateRandomGuess(scaleMin, scaleMax)
+      answer = generateRandomGuess(reasonableRange.min, reasonableRange.max)
       break
     case ErrorType.ANCHOR:
-      answer = generateAnchorError(question.text, correctAnswer, scaleMin, scaleMax)
+      answer = generateAnchorError(question.text, correctAnswer, reasonableRange.min, reasonableRange.max)
       break
     case ErrorType.DONT_KNOW:
-      answer = generateDontKnow(scaleMin, scaleMax)
+      answer = generateDontKnow(reasonableRange.min, reasonableRange.max)
       break
     default:
       answer = generateRoundingError(correctAnswer)
   }
 
-  // Clamp to scale bounds
+  // Clamp to actual scale bounds (not reasonable range — some errors like MAGNITUDE can exceed it)
   answer = Math.max(scaleMin, Math.min(scaleMax, answer))
   answer = roundToReasonablePrecision(answer, correctAnswer)
 
@@ -165,6 +170,25 @@ function generateIncorrectAnswer(
   }
 
   return { answer, errorType }
+}
+
+/**
+ * Compute a reasonable error range for random/anchor/don't-know errors.
+ * Real humans don't guess uniformly across [0, 1,000,000] — they stay
+ * within a plausible neighborhood of the correct answer.
+ */
+function computeReasonableErrorRange(
+  correctAnswer: number,
+  scaleMin: number,
+  scaleMax: number,
+): { min: number; max: number } {
+  const magnitude = Math.abs(correctAnswer) || 1
+  // Reasonable range: correct ± 3× magnitude, but at least 20% of scale
+  const halfRange = Math.max(magnitude * 3, (scaleMax - scaleMin) * 0.1)
+  return {
+    min: Math.max(scaleMin, correctAnswer - halfRange),
+    max: Math.min(scaleMax, correctAnswer + halfRange),
+  }
 }
 
 // ── Error generators ─────────────────────────────────────────────────────
@@ -191,13 +215,11 @@ function generateMagnitudeError(correctAnswer: number): number {
 
 function generateComplementError(
   correctAnswer: number,
-  scaleMin: number,
-  scaleMax: number,
   questionText: string,
 ): number {
   // For percentage/discount questions: confuse "discount amount" with "final price"
-  // E.g., 25% off 800 = 600 correct → return 200 (just the discount)
-  // Detect percentage patterns in question text
+  // E.g., 50% off 300 = 150 correct → return 150 (the discount amount = same, but we
+  // can try base - correct or confuse proportions)
   const percentMatch = questionText.match(/(\d+)\s*%/)
   const baseMatch = questionText.match(/(\d+)\s*(?:Kč|kč|korun|CZK)/i)
 
@@ -209,11 +231,37 @@ function generateComplementError(
     // Return the "other" answer
     if (Math.abs(correctAnswer - finalPrice) < 1) return discountAmount
     if (Math.abs(correctAnswer - discountAmount) < 1) return finalPrice
+    // Fallback: return the base value (common confusion)
+    return base
   }
 
-  // Generic complement: mirror around midpoint
-  const mid = (scaleMin + scaleMax) / 2
-  return mid + (mid - correctAnswer)
+  // For fraction questions (e.g., "2/3 of X = 6000, find X"):
+  // Common error: multiply instead of divide, or vice versa
+  const fractionMatch = questionText.match(/(\d+)\s*\/\s*(\d+)/)
+  if (fractionMatch) {
+    const num = parseInt(fractionMatch[1]!, 10)
+    const den = parseInt(fractionMatch[2]!, 10)
+    // If correct = base / (num/den), common error is base * (num/den)
+    return Math.round(correctAnswer * (num / den) * (num / den))
+  }
+
+  // Generic complement: use the correct answer's "inverse" within a plausible range
+  // E.g., for probability 100 out of 1000, return 900 (complement to 1000)
+  // Extract the largest round number from the question as the "whole"
+  const numbers = (questionText.match(/\d+/g) ?? [])
+    .map(Number)
+    .filter(n => n > correctAnswer && n <= correctAnswer * 20)
+    .sort((a, b) => a - b)
+
+  if (numbers.length > 0) {
+    // Complement relative to the most likely "whole" number
+    return numbers[0]! - correctAnswer
+  }
+
+  // Last resort: off by a factor that makes sense (e.g., ×2 or ÷2)
+  return Math.random() < 0.5
+    ? Math.round(correctAnswer * 2)
+    : Math.round(correctAnswer / 2)
 }
 
 function generateRandomGuess(scaleMin: number, scaleMax: number): number {
@@ -242,9 +290,15 @@ function generateAnchorError(
   return correctAnswer * (0.8 + Math.random() * 0.4)
 }
 
-function generateDontKnow(scaleMin: number, scaleMax: number): number {
-  // Return midpoint or 0
-  return Math.random() < 0.5 ? 0 : Math.round((scaleMin + scaleMax) / 2)
+function generateDontKnow(rangeMin: number, rangeMax: number): number {
+  // "Don't know" respondents pick round numbers or 0
+  // Using the reasonable range (not full scale), this produces sensible values
+  if (Math.random() < 0.3) return 0
+  // Pick a round number within the reasonable range
+  const mid = (rangeMin + rangeMax) / 2
+  const magnitude = Math.max(Math.abs(mid), 1)
+  const roundTo = magnitude >= 1000 ? 1000 : magnitude >= 100 ? 100 : magnitude >= 10 ? 10 : 1
+  return Math.round(mid / roundTo) * roundTo
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
