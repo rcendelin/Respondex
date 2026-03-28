@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Users, Plus, Download, Trash2, FileUp, Wand2, ChevronLeft, ChevronRight, Sparkles, Brain } from 'lucide-react'
+import { Users, Plus, Download, Trash2, FileUp, Wand2, ChevronLeft, ChevronRight, Sparkles, Brain, BarChart3, Table2 } from 'lucide-react'
 import {
   getPopulations, createPopulation, exportPopulation, deletePopulation, downloadTemplate,
   getPersons, generatePopulation, enrichPopulation,
@@ -7,6 +7,9 @@ import {
 } from '../lib/api'
 import type { Person } from '@respondex/shared'
 import { computeExpectedScore, scoreToLevel } from '@respondex/shared'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+} from 'recharts'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
