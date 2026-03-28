@@ -169,6 +169,12 @@ export function parseQuestionnaireXlsx(
     // Parse piping
     const pipingFrom = String(row['PipingFrom'] ?? '').trim() || undefined
 
+    // Parse numeric question fields
+    const jeNumerickaRaw = String(row['JeNumericka'] ?? '').trim()
+    const is_numeric = jeNumerickaRaw ? parseBoolean(jeNumerickaRaw) : undefined
+    const spravnaOdpovedRaw = String(row['SpravnaOdpoved'] ?? '').trim()
+    const correct_answer = spravnaOdpovedRaw ? Number(spravnaOdpovedRaw) : undefined
+
     const question: Question = {
       id,
       order: Math.round(orderRaw),
@@ -180,6 +186,8 @@ export function parseQuestionnaireXlsx(
       ...(skalaMax !== undefined && !isNaN(skalaMax) ? { scale_max: skalaMax } : {}),
       ...(skalaMinPopisek ? { scale_min_label: skalaMinPopisek } : {}),
       ...(skalaMaxPopisek ? { scale_max_label: skalaMaxPopisek } : {}),
+      ...(is_numeric != null ? { is_numeric } : {}),
+      ...(correct_answer !== undefined && !isNaN(correct_answer) ? { correct_answer } : {}),
       ...(skip_logic ? { skip_logic } : {}),
       ...(pipingFrom ? { piping_from: pipingFrom } : {}),
     }

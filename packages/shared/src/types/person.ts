@@ -65,6 +65,8 @@ export interface Demographics {
   region?: Region
   /** PIAAC numeracy proficiency level (assigned from reference data distributions) */
   numeracy_level?: import('./numeracy.js').NumeracyLevel
+  /** Continuous PIAAC numeracy score (0–500), derived from demographics */
+  piaac_score?: number
   /** Any additional custom demographic fields from XLSX */
   custom_fields?: Record<string, string | number | boolean>
 }

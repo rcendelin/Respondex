@@ -28,6 +28,8 @@ export const QuestionSchema = z
     scale_min_label: z.string().max(100).optional(),
     scale_max_label: z.string().max(100).optional(),
     required: z.boolean(),
+    is_numeric: z.boolean().optional(),
+    correct_answer: z.number().optional(),
     skip_logic: SkipLogicSchema.optional(),
     piping_from: z.string().max(50).optional(),
   })
@@ -62,6 +64,15 @@ export const QuestionSchema = z
           path: ['scale_min'],
         })
       }
+    }
+
+    // is_numeric requires correct_answer
+    if (question.is_numeric && question.correct_answer === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Numerická otázka (is_numeric=true) vyžaduje správnou odpověď (correct_answer)',
+        path: ['correct_answer'],
+      })
     }
 
     // Matrix requires both options (columns) and matrix_rows

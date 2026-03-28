@@ -84,6 +84,44 @@ export function getNumeracyDistribution(person: Person) {
   ) ?? null
 }
 
+/**
+ * Assign both a categorical level AND a continuous PIAAC score (0–500).
+ * The score is sampled from a truncated normal within the assigned level's band.
+ */
+export function assignNumeracyProfile(person: Person): { level: NumeracyLevel; score: number } {
+  const ageGroup = toAgeGroup(person.age)
+  const gender: NumeracyGender = person.gender as NumeracyGender
+  const education = toNumeracyEducation(person.demographics?.education)
+
+  const row = NUMERACY_REFERENCE_DATA.conditional_distributions.find(
+    (r) => r.age_group === ageGroup && r.gender === gender && r.education === education
+  )
+
+  const dist = row?.distribution ?? NUMERACY_REFERENCE_DATA.marginal_distributions[0]?.distribution
+  const level = dist ? sampleFromDistribution(dist) : NumeracyLevel.LEVEL_2
+
+  // Find level band boundaries
+  const levelDef = NUMERACY_REFERENCE_DATA.level_definitions.find((d) => d.level === level)
+  const scoreMin = levelDef?.score_min ?? 0
+  const scoreMax = levelDef?.score_max ?? 500
+
+  // Sample continuous score from Normal(estimated_mean, estimated_sd), clamped to level band
+  const estMean = row?.estimated_mean ?? 267
+  const estSd = row?.estimated_sd ?? 50
+  let score = boxMullerNormal(estMean, estSd)
+  score = Math.round(Math.max(scoreMin, Math.min(scoreMax, score)))
+
+  return { level, score }
+}
+
+/** Box-Muller transform: generate a normally distributed random value */
+function boxMullerNormal(mean: number, sd: number): number {
+  const u1 = Math.random() || 1e-10 // avoid log(0)
+  const u2 = Math.random()
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  return mean + z * sd
+}
+
 /** Sample a NumeracyLevel from a probability distribution using Math.random() */
 function sampleFromDistribution(dist: Record<NumeracyLevel, number>): NumeracyLevel {
   const rand = Math.random()

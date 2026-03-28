@@ -3,6 +3,7 @@ import { BlobStorageService } from '../services/storage.js'
 import { OpenAIService } from '../services/openai.js'
 import { buildPrompt, isRefusal, REFUSAL_FALLBACK, buildCompetenceProbe, extractCompetenceHint, isNumericQuestion } from '../services/prompt-builder.js'
 import { estimateQuestionDifficulty, numeracyToTheta, computeCompetenceProbability, generateIRTHint } from '../services/irt-engine.js'
+import { generateStochasticAnswer } from '../services/stochastic-numeric-generator.js'
 import { expandVariance, checkCoherence, buildCalibrationReport } from '../services/calibration.js'
 import { parseModelResponse } from '../services/response-parser.js'
 import type {
@@ -13,7 +14,7 @@ import type {
   SimulationResponse,
   SupportedModel,
 } from '@respondex/shared'
-import { SimulationStatus, Strategy, VarianceMode } from '@respondex/shared'
+import { SimulationStatus, Strategy, VarianceMode, assignNumeracyProfile } from '@respondex/shared'
 import { parseChunkMessage } from '../lib/queue.js'
 
 /** Max OpenAI call retries for refusals */
@@ -81,6 +82,16 @@ async function processSimulationChunk(
   if (!Array.isArray(questions) || questions.length === 0) {
     ctx.warn(`No questions found for simulation ${simulation_id}`)
     return
+  }
+
+  // Assign PIAAC numeracy profile to persons that don't have one yet
+  for (const person of chunkPersons) {
+    if (!person.demographics) person.demographics = {} as Person['demographics'] & {}
+    if (person.demographics!.numeracy_level == null || person.demographics!.piaac_score == null) {
+      const profile = assignNumeracyProfile(person)
+      person.demographics!.numeracy_level = profile.level
+      person.demographics!.piaac_score = profile.score
+    }
   }
 
   const openai = new OpenAIService()
@@ -168,6 +179,26 @@ async function callWithRefusalRetry(
   ctx: InvocationContext
 ): Promise<SimulationResponse> {
   const timestamp = new Date().toISOString()
+
+  // Stochastic bypass: numeric questions with correct answers skip LLM entirely
+  if (question.is_numeric && question.correct_answer != null) {
+    const piaacScore = person.demographics?.piaac_score ?? 267
+    const itemParams = estimateQuestionDifficulty(question)
+    const result = generateStochasticAnswer(piaacScore, question, itemParams)
+
+    return {
+      person_id: person.id,
+      question_id: question.id,
+      run,
+      answer: result.answer,
+      valid: true,
+      strategy,
+      model: 'stochastic-piaac' as SupportedModel,
+      temperature: 0,
+      timestamp,
+    }
+  }
+
   let { system, user } = buildPrompt(person, question, strategy, varianceMode)
 
   // Layer 3a: IRT-based competence modulation (Algorithm 2) — zero extra LLM calls

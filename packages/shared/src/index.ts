@@ -15,7 +15,7 @@ export * from './types/ab-test.js'
 export { NUMERACY_REFERENCE_DATA } from './data/numeracy-reference.js'
 
 // Numeracy assignment utilities
-export { assignNumeracyLevel, getNumeracyDistribution } from './numeracy-assigner.js'
+export { assignNumeracyLevel, assignNumeracyProfile, getNumeracyDistribution } from './numeracy-assigner.js'
 
 // Behavioral parameters
 export { BEHAVIORAL_PARAMS, getBehavioralInstructions } from './data/numeracy-behavioral-params.js'

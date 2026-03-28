@@ -44,6 +44,8 @@ interface QuestionDraft {
   scale_max?: number | undefined
   scale_min_label?: string | undefined
   scale_max_label?: string | undefined
+  is_numeric?: boolean | undefined
+  correct_answer?: number | undefined
   skip_logic?: SkipLogic | undefined
   piping_from?: string | undefined
 }
@@ -356,7 +358,41 @@ function QuestionEditorPanel({
       )}
 
       {question.type === QuestionType.NUMBER && (
-        <ScaleEditor question={question} onChange={onChange} showLabels={false} />
+        <>
+          <ScaleEditor question={question} onChange={onChange} showLabels={false} />
+          <div className="space-y-2 pt-1 border-t border-dashed">
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={question.is_numeric ?? false}
+                onChange={(e) => onChange({
+                  is_numeric: e.target.checked || undefined,
+                  correct_answer: e.target.checked ? question.correct_answer : undefined,
+                })}
+                className="rounded"
+              />
+              <span className="text-muted-foreground">Faktická otázka se správnou odpovědí</span>
+              <span className="text-muted-foreground/60">(stochastický bypass AI)</span>
+            </label>
+            {question.is_numeric && (
+              <div className="flex gap-2 items-end">
+                <div className="w-48">
+                  <Label className="text-xs text-muted-foreground">Správná odpověď</Label>
+                  <Input
+                    type="number"
+                    value={question.correct_answer ?? ''}
+                    onChange={(e) => onChange({ correct_answer: e.target.value === '' ? undefined : Number(e.target.value) })}
+                    className="h-7 text-sm"
+                    placeholder="např. 600"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground pb-1">
+                  Odpov\u011bdi budou generov\u00e1ny stochasticky podle PIAAC sk\u00f3re respondenta.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {question.type === QuestionType.SEMANTIC_DIFF && (

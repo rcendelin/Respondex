@@ -44,6 +44,10 @@ export interface Question {
   /** Label for the maximum scale end (semantic_diff, likert) */
   scale_max_label?: string
   required: boolean
+  /** Whether this question has a factual correct answer (enables stochastic LLM bypass) */
+  is_numeric?: boolean
+  /** The correct/expected numeric answer (required when is_numeric is true) */
+  correct_answer?: number
   /** Conditional display logic */
   skip_logic?: SkipLogic
   /** Question ID whose answer should be piped into this question text as {Q_ID} */
