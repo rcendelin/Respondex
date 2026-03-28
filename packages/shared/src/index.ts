@@ -13,9 +13,19 @@ export * from './types/ab-test.js'
 
 // Reference data
 export { NUMERACY_REFERENCE_DATA } from './data/numeracy-reference.js'
+export { NUMERACY_EFFECT_MODEL } from './data/numeracy-effects.js'
+export type { NumeracyEffectModel, InteractionTerm, ResidualSDConfig } from './data/numeracy-effects.js'
 
 // Numeracy assignment utilities
-export { assignNumeracyLevel, assignNumeracyProfile, getNumeracyDistribution } from './numeracy-assigner.js'
+export {
+  assignNumeracyLevel,
+  assignNumeracyProfile,
+  getNumeracyDistribution,
+  computeExpectedScore,
+  scoreToLevel,
+  toAgeGroup,
+  toNumeracyEducation,
+} from './numeracy-assigner.js'
 
 // Behavioral parameters
 export { BEHAVIORAL_PARAMS, getBehavioralInstructions } from './data/numeracy-behavioral-params.js'
