@@ -501,6 +501,172 @@ function piaacLevelLabel(score: number): string {
   return 'L5'
 }
 
+// ── Chart colors ─────────────────────────────────────────────────────────
+
+const CHART_COLORS = [
+  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+  '#f43f5e', '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#14b8a6', '#06b6d4', '#3b82f6', '#2563eb',
+]
+
+const PIAAC_COLORS: Record<string, string> = {
+  '<1': '#ef4444', 'L1': '#f97316', 'L2': '#eab308',
+  'L3': '#22c55e', 'L4': '#3b82f6', 'L5': '#8b5cf6',
+}
+
+// ── Population charts ───────────────────────────────────────────────────
+
+function countBy(persons: Person[], accessor: (p: Person) => string): { name: string; count: number }[] {
+  const map = new Map<string, number>()
+  for (const p of persons) {
+    const v = accessor(p) || '–'
+    map.set(v, (map.get(v) ?? 0) + 1)
+  }
+  return [...map.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+function ageHistogram(persons: Person[]): { name: string; count: number }[] {
+  const buckets: Record<string, number> = {}
+  for (const p of persons) {
+    const bucket = `${Math.floor(p.age / 10) * 10}–${Math.floor(p.age / 10) * 10 + 9}`
+    buckets[bucket] = (buckets[bucket] ?? 0) + 1
+  }
+  return Object.entries(buckets)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function piaacDistribution(persons: Person[]): { name: string; count: number; color: string }[] {
+  const levels = ['<1', 'L1', 'L2', 'L3', 'L4', 'L5']
+  const counts: Record<string, number> = {}
+  for (const l of levels) counts[l] = 0
+  for (const p of persons) {
+    const score = p.demographics?.piaac_score ?? computeExpectedScore(p)
+    const label = piaacLevelLabel(score)
+    counts[label] = (counts[label] ?? 0) + 1
+  }
+  return levels.map((l) => ({ name: l, count: counts[l] ?? 0, color: PIAAC_COLORS[l] ?? '#999' }))
+}
+
+function MiniBarChart({
+  title,
+  data,
+  colorByName,
+}: {
+  title: string
+  data: { name: string; count: number; color?: string }[]
+  colorByName?: boolean
+}) {
+  if (data.length === 0) return null
+  return (
+    <div className="border rounded-lg p-3 space-y-1">
+      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+      <ResponsiveContainer width="100%" height={Math.max(100, data.length * 24 + 20)}>
+        <BarChart data={data} layout="vertical" margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+          <XAxis type="number" hide />
+          <YAxis
+            type="category"
+            dataKey="name"
+            width={100}
+            tick={{ fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            formatter={(value: number) => [`${value} osob`, 'Počet']}
+            contentStyle={{ fontSize: 11, borderRadius: 8 }}
+          />
+          <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18}>
+            {data.map((d, i) => (
+              <Cell key={d.name} fill={d.color ?? (colorByName ? CHART_COLORS[i % CHART_COLORS.length] : '#6366f1')} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function MiniPieChart({
+  title,
+  data,
+}: {
+  title: string
+  data: { name: string; count: number; color?: string }[]
+}) {
+  if (data.length === 0) return null
+  const total = data.reduce((s, d) => s + d.count, 0)
+  return (
+    <div className="border rounded-lg p-3 space-y-1">
+      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+      <div className="flex items-center gap-3">
+        <ResponsiveContainer width={90} height={90}>
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="count"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={40}
+              innerRadius={20}
+              strokeWidth={1}
+            >
+              {data.map((d, i) => (
+                <Cell key={d.name} fill={d.color ?? CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(value: number) => [`${value} (${Math.round(value / total * 100)}%)`, '']}
+              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="flex flex-col gap-0.5">
+          {data.map((d, i) => (
+            <div key={d.name} className="flex items-center gap-1.5 text-[10px]">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: d.color ?? CHART_COLORS[i % CHART_COLORS.length] }}
+              />
+              <span className="text-muted-foreground">{d.name}</span>
+              <span className="font-medium">{Math.round(d.count / total * 100)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PopulationCharts({ persons }: { persons: Person[] }) {
+  const genderData = countBy(persons, (p) => p.gender)
+  const educationData = countBy(persons, (p) => displayVal(p.demographics?.education))
+  const employmentData = countBy(persons, (p) => displayVal(p.demographics?.employment_status))
+  const incomeData = countBy(persons, (p) => displayVal(p.demographics?.income_level))
+  const regionData = countBy(persons, (p) => displayVal(p.demographics?.region))
+  const ageData = ageHistogram(persons)
+  const piaacData = piaacDistribution(persons)
+
+  return (
+    <div className="p-4 space-y-3 border-b bg-muted/5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MiniPieChart title="Pohlaví" data={genderData.map((d, i) => ({ ...d, color: i === 0 ? '#3b82f6' : '#ec4899' }))} />
+        <MiniBarChart title="Věk" data={ageData} />
+        <MiniBarChart title="PIAAC úroveň" data={piaacData} />
+        <MiniPieChart title="Příjem" data={incomeData.map((d, i) => ({ ...d, color: CHART_COLORS[i % CHART_COLORS.length]! }))} />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <MiniBarChart title="Vzdělání" data={educationData} colorByName />
+        <MiniBarChart title="Zaměstnanecký status" data={employmentData} colorByName />
+        <MiniBarChart title="Kraj" data={regionData} colorByName />
+      </div>
+    </div>
+  )
+}
+
 // ── Column filter helper ─────────────────────────────────────────────────
 
 /** Extract unique non-empty values for a column from persons array */
@@ -754,6 +920,9 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
   const [enrichResult, setEnrichResult] = useState<{ enriched: number; failed: number } | null>(null)
   const [missingStories, setMissingStories] = useState(0)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [viewMode, setViewMode] = useState<'table' | 'charts'>('table')
+  const [allPersons, setAllPersons] = useState<Person[] | null>(null)
+  const [loadingAll, setLoadingAll] = useState(false)
 
   useEffect(() => {
     if (!population) return
@@ -779,9 +948,22 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
     return () => { cancelled = true }
   }, [population, offset, refreshKey])
 
+  // Load all persons when switching to chart view
+  useEffect(() => {
+    if (viewMode !== 'charts' || !population || allPersons !== null) return
+    let cancelled = false
+    setLoadingAll(true)
+    getPersons(population.id, 0, 2000)
+      .then((page) => { if (!cancelled) setAllPersons(page.persons) })
+      .catch(() => { /* fallback to page data */ })
+      .finally(() => { if (!cancelled) setLoadingAll(false) })
+    return () => { cancelled = true }
+  }, [viewMode, population, allPersons])
+
   function handleClose() {
     setPersons([]); setTotal(0); setOffset(0); setPersonsError(null)
     setEnrichResult(null); setMissingStories(0); setRefreshKey(0)
+    setViewMode('table'); setAllPersons(null); setLoadingAll(false)
     onClose()
   }
 
@@ -823,6 +1005,21 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
                 </div>
               </div>
               <div className="flex gap-2 flex-shrink-0">
+                {/* View mode toggle */}
+                <div className="flex border rounded-md overflow-hidden">
+                  <button
+                    className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                    onClick={() => setViewMode('table')}
+                  >
+                    <Table2 className="h-3.5 w-3.5" /> Tabulka
+                  </button>
+                  <button
+                    className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${viewMode === 'charts' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                    onClick={() => setViewMode('charts')}
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" /> Grafy
+                  </button>
+                </div>
                 <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)}>
                   <Wand2 className="h-4 w-4 mr-1.5" />
                   Generovat osoby
@@ -865,8 +1062,15 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
                 {' '}nebo importujte XLSX.
               </p>
             )}
-            {!loadingPersons && persons.length > 0 && (
+            {!loadingPersons && persons.length > 0 && viewMode === 'table' && (
               <PersonsTable persons={persons} />
+            )}
+            {viewMode === 'charts' && (
+              loadingAll
+                ? <p className="text-sm text-muted-foreground px-6 py-8 text-center">Načítám data pro grafy…</p>
+                : (allPersons ?? persons).length > 0
+                  ? <PopulationCharts persons={allPersons ?? persons} />
+                  : null
             )}
           </div>
 
