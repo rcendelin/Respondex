@@ -55,6 +55,7 @@ export function toNumeracyEducation(education?: Education): NumeracyEducation {
       return 'below_secondary'
     case Education.SECONDARY:
     case Education.HIGHER_VOCATIONAL:
+    case Education.HIGHER_VOCATIONAL_CONSERVATORY:
       return 'upper_secondary'
     case Education.UNIVERSITY:
       return 'tertiary'

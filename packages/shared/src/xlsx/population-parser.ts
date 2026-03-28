@@ -85,6 +85,8 @@ const EDUCATION_ALIASES: Record<string, string> = {
   'vyšší odborné (vošs)':                      'Vyšší odborné',
   'vyšší odborná škola':                       'Vyšší odborné',
   'voš':                                       'Vyšší odborné',
+  'konzervatoř':                               'Vyšší odborné / konzervatoř',
+  'vyšší odborné / konzervatoř':               'Vyšší odborné / konzervatoř',
   'vysokoškolské (bc.)':                       'Vysokoškolské',
   'vysokoškolské (mgr./ing. a výše)':          'Vysokoškolské',
   'vysokoškolské vzdělání':                    'Vysokoškolské',

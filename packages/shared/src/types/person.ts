@@ -11,6 +11,7 @@ export enum Education {
   VOCATIONAL = 'Vyučení',
   SECONDARY = 'S maturitou',
   HIGHER_VOCATIONAL = 'Vyšší odborné',
+  HIGHER_VOCATIONAL_CONSERVATORY = 'Vyšší odborné / konzervatoř',
   UNIVERSITY = 'Vysokoškolské',
   UNKNOWN = 'Nezjištěno',
 }
