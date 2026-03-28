@@ -498,32 +498,155 @@ function piaacLevelLabel(score: number): string {
   return 'L5'
 }
 
+// ── Column filter helper ─────────────────────────────────────────────────
+
+/** Extract unique non-empty values for a column from persons array */
+function uniqueValues(persons: Person[], accessor: (p: Person) => string | undefined): string[] {
+  const set = new Set<string>()
+  for (const p of persons) {
+    const v = accessor(p)
+    if (v && v !== '–') set.add(v)
+  }
+  return [...set].sort()
+}
+
+/** Filterable column header — dropdown with unique values */
+function FilterHeader({
+  label,
+  values,
+  selected,
+  onChange,
+  icon,
+}: {
+  label: string
+  values: string[]
+  selected: string
+  onChange: (v: string) => void
+  icon?: React.ReactNode
+}) {
+  const hasFilter = selected !== ''
+  return (
+    <th className="text-left px-3 py-1 font-medium whitespace-nowrap align-top">
+      <div className="space-y-0.5">
+        <span className="flex items-center gap-1">
+          {icon}
+          {label}
+          {hasFilter && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
+        </span>
+        {values.length > 1 && (
+          <select
+            value={selected}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full h-5 text-[10px] font-normal bg-transparent border-b border-transparent hover:border-muted-foreground/30 focus:border-primary focus:outline-none cursor-pointer text-muted-foreground appearance-none"
+            title={`Filtrovat podle ${label.toLowerCase()}`}
+          >
+            <option value="">vše</option>
+            {values.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        )}
+      </div>
+    </th>
+  )
+}
+
 function PersonsTable({ persons }: { persons: Person[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<Record<string, string>>({})
+
+  function setFilter(key: string, value: string) {
+    setFilters((prev) => {
+      const next = { ...prev }
+      if (value === '') delete next[key]
+      else next[key] = value
+      return next
+    })
+  }
+
+  // Compute unique values for filter dropdowns
+  const genderOpts = uniqueValues(persons, (p) => p.gender)
+  const educationOpts = uniqueValues(persons, (p) => p.demographics?.education)
+  const maritalOpts = uniqueValues(persons, (p) => p.demographics?.marital_status)
+  const partnerOpts = ['Ano', 'Ne']
+  const employmentOpts = uniqueValues(persons, (p) => p.demographics?.employment_status)
+  const incomeOpts = uniqueValues(persons, (p) => p.demographics?.income_level)
+  const regionOpts = uniqueValues(persons, (p) => p.demographics?.region)
+  const piaacLevelOpts = ['<1', 'L1', 'L2', 'L3', 'L4', 'L5']
+  const storyOpts = ['Ano', 'Ne']
+
+  // Apply filters
+  const filtered = persons.filter((p) => {
+    if (filters['gender'] && p.gender !== filters['gender']) return false
+    if (filters['education'] && displayVal(p.demographics?.education) !== filters['education']) return false
+    if (filters['marital'] && displayVal(p.demographics?.marital_status) !== filters['marital']) return false
+    if (filters['partner']) {
+      const val = p.demographics?.has_partner ? 'Ano' : 'Ne'
+      if (val !== filters['partner']) return false
+    }
+    if (filters['employment'] && displayVal(p.demographics?.employment_status) !== filters['employment']) return false
+    if (filters['income'] && displayVal(p.demographics?.income_level) !== filters['income']) return false
+    if (filters['region'] && displayVal(p.demographics?.region) !== filters['region']) return false
+    if (filters['piaac']) {
+      const score = p.demographics?.piaac_score ?? computeExpectedScore(p)
+      if (piaacLevelLabel(score) !== filters['piaac']) return false
+    }
+    if (filters['story']) {
+      const hasStory = !!p.life_story
+      if (filters['story'] === 'Ano' && !hasStory) return false
+      if (filters['story'] === 'Ne' && hasStory) return false
+    }
+    return true
+  })
+
+  const activeFilterCount = Object.keys(filters).length
+  const isFiltered = activeFilterCount > 0
 
   return (
     <div className="overflow-x-auto">
+      {/* Filter status bar */}
+      {isFiltered && (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-primary/5 border-b text-xs">
+          <span className="text-muted-foreground">
+            Zobrazeno <strong className="text-foreground">{filtered.length}</strong> z {persons.length} osob
+            ({activeFilterCount} {activeFilterCount === 1 ? 'filtr' : activeFilterCount < 5 ? 'filtry' : 'filtrů'})
+          </span>
+          <button
+            className="text-primary hover:underline text-xs"
+            onClick={() => setFilters({})}
+          >
+            Zrušit filtry
+          </button>
+        </div>
+      )}
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b bg-muted/50 sticky top-0">
-            <th className="w-6 px-3 py-2" />
-            {['ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj'].map((h) => (
-              <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap">{h}</th>
-            ))}
-            <th className="px-3 py-2 font-medium whitespace-nowrap text-left" title="PIAAC numeracy skóre (0–500)">
-              <span className="flex items-center gap-1">
-                <Brain className="h-3 w-3" />
-                PIAAC
-              </span>
-            </th>
-            <th className="px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">Příběh</th>
+          <tr className="border-b bg-muted/50 sticky top-0 z-10">
+            <th className="w-6 px-3 py-1" />
+            <th className="text-left px-3 py-1 font-medium whitespace-nowrap align-top">ID</th>
+            <th className="text-left px-3 py-1 font-medium whitespace-nowrap align-top">Věk</th>
+            <FilterHeader label="Pohlaví" values={genderOpts} selected={filters['gender'] ?? ''} onChange={(v) => setFilter('gender', v)} />
+            <FilterHeader label="Vzdělání" values={educationOpts} selected={filters['education'] ?? ''} onChange={(v) => setFilter('education', v)} />
+            <FilterHeader label="Stav" values={maritalOpts} selected={filters['marital'] ?? ''} onChange={(v) => setFilter('marital', v)} />
+            <FilterHeader label="Partner" values={partnerOpts} selected={filters['partner'] ?? ''} onChange={(v) => setFilter('partner', v)} />
+            <FilterHeader label="Status" values={employmentOpts} selected={filters['employment'] ?? ''} onChange={(v) => setFilter('employment', v)} />
+            <FilterHeader label="Příjem" values={incomeOpts} selected={filters['income'] ?? ''} onChange={(v) => setFilter('income', v)} />
+            <FilterHeader label="Kraj" values={regionOpts} selected={filters['region'] ?? ''} onChange={(v) => setFilter('region', v)} />
+            <FilterHeader label="PIAAC" values={piaacLevelOpts} selected={filters['piaac'] ?? ''} onChange={(v) => setFilter('piaac', v)} icon={<Brain className="h-3 w-3" />} />
+            <FilterHeader label="Příběh" values={storyOpts} selected={filters['story'] ?? ''} onChange={(v) => setFilter('story', v)} />
           </tr>
         </thead>
         <tbody>
-          {persons.map((p) => {
+          {filtered.length === 0 && (
+            <tr>
+              <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
+                Žádné osoby neodpovídají zvoleným filtrům.
+              </td>
+            </tr>
+          )}
+          {filtered.map((p) => {
             const isExpanded = expandedId === p.id
             const hasStory = !!p.life_story
-            // Use stored score if available, otherwise compute expected score
             const piaacScore = p.demographics?.piaac_score ?? computeExpectedScore(p)
             const isEstimated = p.demographics?.piaac_score == null
             return (
