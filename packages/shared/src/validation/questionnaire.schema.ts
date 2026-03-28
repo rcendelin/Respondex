@@ -11,6 +11,13 @@ export const MatrixRowSchema = z.object({
   text: z.string().min(1),
 })
 
+export const ErrorAttractorSchema = z.object({
+  value: z.number(),
+  label: z.string().min(1).max(200),
+  tiers: z.array(z.enum(['low', 'mid', 'high'])).optional(),
+  weight: z.number().min(0).max(100).optional(),
+})
+
 export const QuestionSchema = z
   .object({
     id: z.string().min(1, 'ID otázky nesmí být prázdné').max(50),
@@ -30,6 +37,7 @@ export const QuestionSchema = z
     required: z.boolean(),
     is_numeric: z.boolean().optional(),
     correct_answer: z.number().optional(),
+    error_attractors: z.array(ErrorAttractorSchema).max(20).optional(),
     skip_logic: SkipLogicSchema.optional(),
     piping_from: z.string().max(50).optional(),
   })

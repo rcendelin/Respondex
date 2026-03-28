@@ -10,14 +10,16 @@
  * basic numeracy. This module produces human-like variance.
  */
 
-import type { Question } from '@respondex/shared'
+import type { Question, ErrorAttractor } from '@respondex/shared'
 import { NumeracyLevel } from '@respondex/shared'
 import { computeCompetenceProbability, type ItemParams } from './irt-engine.js'
+import { resolveAttractors } from './attractor-detector.js'
 
 // ── Types ────────────────────────────────────────────────────────────────
 
 export enum ErrorType {
   CORRECT = 'correct',
+  ATTRACTOR = 'attractor',
   ROUNDING = 'rounding',
   MAGNITUDE = 'magnitude',
   COMPLEMENT = 'complement',
@@ -29,6 +31,8 @@ export enum ErrorType {
 export interface StochasticResult {
   answer: number
   errorType: ErrorType
+  /** If errorType is ATTRACTOR, which attractor was selected */
+  attractorLabel?: string
 }
 
 // ── Error type probabilities by competence tier ──────────────────────────
@@ -89,9 +93,16 @@ export function generateStochasticAnswer(
 
   // Roll correct/incorrect
   if (Math.random() < pCorrect) {
-    return generateCorrectAnswer(correctAnswer, piaacScore)
+    return { answer: correctAnswer, errorType: ErrorType.CORRECT }
   }
 
+  // Try attractor-based error generation first
+  const attractors = resolveAttractors(question)
+  if (attractors.length > 0) {
+    return generateAttractorAnswer(correctAnswer, question, piaacScore, attractors)
+  }
+
+  // Fallback: generic error system (for questions without detectable pattern)
   return generateIncorrectAnswer(correctAnswer, question, piaacScore)
 }
 
@@ -103,21 +114,63 @@ export function piaacScoreToTheta(score: number): number {
   return (score - 267) / 48
 }
 
-// ── Correct answer generation ────────────────────────────────────────────
+// ── Attractor-based error generation ─────────────────────────────────────
 
-function generateCorrectAnswer(correctAnswer: number, piaacScore: number): StochasticResult {
-  // High-competence persons answer precisely; lower ones may have small noise
-  const noiseScale = piaacScore >= 276 ? 0.005 : 0.02
-  const noise = (Math.random() - 0.5) * 2 * noiseScale * Math.abs(correctAnswer || 1)
-  let answer = correctAnswer + noise
+type CompetenceTier = 'low' | 'mid' | 'high'
 
-  // Round to reasonable precision based on answer magnitude
-  answer = roundToReasonablePrecision(answer, correctAnswer)
-
-  return { answer, errorType: ErrorType.CORRECT }
+function getTier(piaacScore: number): CompetenceTier {
+  if (piaacScore < 226) return 'low'
+  if (piaacScore < 276) return 'mid'
+  return 'high'
 }
 
-// ── Incorrect answer generation ──────────────────────────────────────────
+function weightedSample(attractors: ErrorAttractor[]): ErrorAttractor {
+  const totalWeight = attractors.reduce((s, a) => s + (a.weight ?? 1), 0)
+  let r = Math.random() * totalWeight
+  for (const a of attractors) {
+    r -= (a.weight ?? 1)
+    if (r <= 0) return a
+  }
+  return attractors[attractors.length - 1]!
+}
+
+function generateAttractorAnswer(
+  correctAnswer: number,
+  question: Question,
+  piaacScore: number,
+  attractors: ErrorAttractor[],
+): StochasticResult {
+  const tier = getTier(piaacScore)
+  const applicable = attractors.filter(
+    a => !a.tiers || a.tiers.length === 0 || a.tiers.includes(tier),
+  )
+
+  if (applicable.length === 0) {
+    // No attractors for this tier — fall back to generic
+    return generateIncorrectAnswer(correctAnswer, question, piaacScore)
+  }
+
+  const selected = weightedSample(applicable)
+
+  // Apply ±2% jitter so answers aren't identical across respondents
+  const jitter = 1 + (Math.random() - 0.5) * 0.04
+  let answer = selected.value * jitter
+  answer = roundToReasonablePrecision(answer, correctAnswer)
+
+  const scaleMin = question.scale_min ?? 0
+  const scaleMax = question.scale_max ?? correctAnswer * 10
+  answer = Math.max(scaleMin, Math.min(scaleMax, answer))
+
+  // Ensure different from correct
+  if (answer === correctAnswer) {
+    const offset = correctAnswer > 0 ? Math.ceil(correctAnswer * 0.05) : 1
+    answer = Math.max(scaleMin, Math.min(scaleMax, correctAnswer + offset))
+  }
+
+  return { answer, errorType: ErrorType.ATTRACTOR, attractorLabel: selected.label }
+}
+
+// ── Generic incorrect answer generation (fallback) ───────────────────────
 
 function generateIncorrectAnswer(
   correctAnswer: number,

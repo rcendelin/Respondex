@@ -13,6 +13,20 @@ export enum QuestionType {
   SEMANTIC_DIFF = 'semantic_diff',
 }
 
+/** A specific wrong answer that real humans commonly give to a math question */
+export interface ErrorAttractor {
+  /** The attractor value (before jitter) */
+  value: number
+  /** Human-readable label for what error this represents */
+  label: string
+  /** Which competence tiers are drawn to this error.
+   *  'low' = PIAAC Below 1 + Level 1, 'mid' = Level 2, 'high' = Level 3+
+   *  If omitted, attractor applies to all tiers. */
+  tiers?: ('low' | 'mid' | 'high')[]
+  /** Relative weight within this tier (default 1.0). Higher = more likely to be picked. */
+  weight?: number
+}
+
 export interface SkipLogic {
   /** Question ID that controls this skip, e.g. "Q02" */
   question_id: string
@@ -48,6 +62,8 @@ export interface Question {
   is_numeric?: boolean
   /** The correct/expected numeric answer (required when is_numeric is true) */
   correct_answer?: number
+  /** Manual override: specific wrong answers that incorrect respondents gravitate toward */
+  error_attractors?: ErrorAttractor[]
   /** Conditional display logic */
   skip_logic?: SkipLogic
   /** Question ID whose answer should be piped into this question text as {Q_ID} */
