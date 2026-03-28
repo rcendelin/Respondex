@@ -113,6 +113,7 @@ export const NUMERACY_EFFECT_MODEL: NumeracyEffectModel = {
     [EmploymentStatus.STUDENT]: +8,           // Active learning, recent math exposure
     [EmploymentStatus.RETIRED]: -5,           // Skill atrophy (partial overlap with age effect)
     [EmploymentStatus.MATERNITY_LEAVE]: -3,   // Temporary workforce exit, mild disuse
+    [EmploymentStatus.ECONOMICALLY_INACTIVE]: -8, // Not working, not seeking — skill disuse
     [EmploymentStatus.OTHER]: -5,             // Heterogeneous group, mild negative default
   },
 
