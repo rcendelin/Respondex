@@ -312,30 +312,68 @@ function EnrichDialog({ populationId, totalPersons, missingStories, open, onClos
   const [onlyMissing, setOnlyMissing] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
-  function reset() { setModel('gpt-4o-mini'); setOnlyMissing(true); setError(null); setLoading(false) }
-  function handleClose() { reset(); onClose() }
+  function reset() { setModel('gpt-5.4-mini'); setOnlyMissing(true); setError(null); setLoading(false); setProgress(null) }
+  function handleClose() { if (loading) return; reset(); onClose() }
 
   const count = onlyMissing ? missingStories : totalPersons
+
+  // Estimated time: ~3s per person (with batch concurrency of 10)
+  function estimateTime(n: number): string {
+    const seconds = Math.ceil(n / 10) * 3
+    if (seconds < 60) return `~${seconds}s`
+    const mins = Math.ceil(seconds / 60)
+    return `~${mins} min`
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (count === 0) { setError('Žádné osoby ke zpracování.'); return }
-    if (count > 100) {
-      setError(`Příliš mnoho osob (${count}). Maximum je 100 najednou. Použijte možnost "Jen chybějící".`)
-      return
-    }
     setLoading(true)
     setError(null)
+    setProgress({ done: 0, total: count })
+
+    // For large populations, split into chunks of 100 and call the API
+    // repeatedly. Each call processes up to 100 persons server-side.
+    const CHUNK_SIZE = 100
+    let totalEnriched = 0
+    let totalFailed = 0
+
     try {
-      const result = await enrichPopulation(populationId, { model, only_missing: onlyMissing })
+      if (count <= CHUNK_SIZE) {
+        // Single call — simple case
+        const result = await enrichPopulation(populationId, { model, only_missing: onlyMissing })
+        totalEnriched = result.enriched
+        totalFailed = result.failed
+      } else {
+        // Multiple calls — the backend always processes only_missing persons,
+        // so each subsequent call picks up the next batch of unenriched persons.
+        const chunks = Math.ceil(count / CHUNK_SIZE)
+        for (let i = 0; i < chunks; i++) {
+          const result = await enrichPopulation(populationId, { model, only_missing: onlyMissing })
+          totalEnriched += result.enriched
+          totalFailed += result.failed
+          setProgress({ done: Math.min((i + 1) * CHUNK_SIZE, count), total: count })
+          // If no more persons to enrich, stop early
+          if (result.enriched === 0 && result.skipped > 0) break
+        }
+      }
+
       reset()
-      onEnriched({ enriched: result.enriched, failed: result.failed })
+      onEnriched({ enriched: totalEnriched, failed: totalFailed })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Neočekávaná chyba.')
+      if (totalEnriched > 0) {
+        // Partial success — report what was done
+        setError(`Chyba po zpracování ${totalEnriched} osob: ${err instanceof Error ? err.message : 'Neočekávaná chyba.'}`)
+      }
       setLoading(false)
+      setProgress(null)
     }
   }
+
+  const progressPct = progress ? Math.round((progress.done / progress.total) * 100) : 0
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
@@ -382,14 +420,40 @@ function EnrichDialog({ populationId, totalPersons, missingStories, open, onClos
             </div>
           </div>
           <div className="text-sm font-medium">
-            Bude zpracováno: <span className={count > 100 ? 'text-destructive' : ''}>{count} osob</span>
-            {count > 100 && <span className="text-destructive text-xs ml-1">(max 100)</span>}
+            Bude zpracováno: {count} osob
+            <span className="text-muted-foreground text-xs ml-1.5">
+              (odhad: {estimateTime(count)})
+            </span>
           </div>
+          {count > 100 && !loading && (
+            <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
+              Větší populace bude zpracována automaticky po dávkách. Průběh můžete sledovat níže.
+            </p>
+          )}
+
+          {/* Progress bar */}
+          {loading && progress && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Zpracováno {progress.done} / {progress.total}</span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-primary/20 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `${Math.max(progressPct, 2)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>Zrušit</Button>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+              {loading ? 'Probíhá…' : 'Zrušit'}
+            </Button>
             <Button type="submit" disabled={loading || count === 0}>
-              {loading ? 'Generuji příběhy…' : `Generovat (${count})`}
+              {loading ? `Generuji… (${progressPct}%)` : `Generovat (${count})`}
             </Button>
           </DialogFooter>
         </form>

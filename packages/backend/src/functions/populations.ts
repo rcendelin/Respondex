@@ -496,18 +496,23 @@ async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promi
       return { status: 200, jsonBody: { enriched: 0, skipped: persons.length, failed: 0 } }
     }
 
-    // Cap at 100 persons per call to stay under 10-min Azure Function timeout
-    const MAX_PER_CALL = 100
+    // Hard cap at 2000 to avoid absurd requests
+    const MAX_PER_CALL = 2000
     if (toEnrich.length > MAX_PER_CALL) {
-      throw new ValidationError(`Příliš mnoho osob k obohacení najednou (${toEnrich.length}). Maximum je ${MAX_PER_CALL}. Použijte parametr "only_missing": true nebo nejprve zmenšete populaci.`)
+      throw new ValidationError(`Příliš mnoho osob (${toEnrich.length}). Maximum je ${MAX_PER_CALL}.`)
     }
 
     const openai = new OpenAIService()
     let enriched = 0
     let failed = 0
 
-    // Process in batches of 10 concurrent requests
+    // Process in batches of 10 concurrent requests.
+    // Save progress after every SAVE_INTERVAL persons so that
+    // partial results survive timeouts on very large populations.
     const BATCH_SIZE = 10
+    const SAVE_INTERVAL = 50
+    let sinceLastSave = 0
+
     for (let i = 0; i < toEnrich.length; i += BATCH_SIZE) {
       const batch = toEnrich.slice(i, i + BATCH_SIZE)
       const results = await Promise.allSettled(
@@ -520,7 +525,6 @@ async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promi
         if (!person || !result) continue
 
         if (result.status === 'fulfilled' && result.value) {
-          // Find and update the person in the original array
           const idx = persons.findIndex((p) => p.id === person.id)
           if (idx >= 0) {
             persons[idx] = { ...persons[idx]!, life_story: result.value }
@@ -531,9 +535,17 @@ async function enrichPopulation(req: HttpRequest, ctx: InvocationContext): Promi
           ctx.warn(`Failed to enrich person ${person.id}`)
         }
       }
+
+      sinceLastSave += batch.length
+      // Save intermediate progress to avoid losing work on timeout
+      if (sinceLastSave >= SAVE_INTERVAL) {
+        await svc.writeJson<Person[]>(`data/populations/${id}/persons.json`, persons)
+        ctx.log(`Enrichment progress: ${enriched} enriched, ${failed} failed, ${i + batch.length}/${toEnrich.length} processed`)
+        sinceLastSave = 0
+      }
     }
 
-    // Persist updated persons
+    // Final save
     await svc.writeJson<Person[]>(`data/populations/${id}/persons.json`, persons)
     ctx.log(`Enriched ${enriched} persons for population ${id}, failed: ${failed}`)
 
