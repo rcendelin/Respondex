@@ -2,7 +2,7 @@ import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } 
 import { randomUUID } from 'crypto'
 import { BlobStorageService } from '../services/storage.js'
 import { OpenAIService } from '../services/openai.js'
-import { parsePopulationXlsx, generatePopulationXlsx, assignNumeracyProfile } from '@respondex/shared'
+import { parsePopulationXlsx, generatePopulationXlsx, computeExpectedScore, scoreToLevel } from '@respondex/shared'
 import type { Person, PersonMetadata } from '@respondex/shared'
 import { NotFoundError, ValidationError, errorResponse, requireUUID, requireUploadSize } from '../lib/errors.js'
 
@@ -310,11 +310,10 @@ function generatePersons(opts: GenerateOptions): Person[] {
       demographics,
     }
 
-    // Assign PIAAC score with random sampling so the population
-    // has realistic variance (not just deterministic means)
-    const piaac = assignNumeracyProfile(p)
-    ;(p.demographics as Record<string, unknown>)['numeracy_level'] = piaac.level
-    ;(p.demographics as Record<string, unknown>)['piaac_score'] = piaac.score
+    // Assign PIAAC score deterministically from demographics — no random component
+    const piaacScore = Math.round(computeExpectedScore(p))
+    ;(p.demographics as Record<string, unknown>)['numeracy_level'] = scoreToLevel(piaacScore)
+    ;(p.demographics as Record<string, unknown>)['piaac_score'] = piaacScore
 
     persons.push(p)
   }
