@@ -226,6 +226,14 @@ interface GenerateOptions {
   region?: string
 }
 
+/** Gaussian random value (Box-Muller) clamped to [-maxAbs, +maxAbs] */
+function clampedGaussian(sd: number, maxAbs: number): number {
+  const u1 = Math.random() || 1e-10
+  const u2 = Math.random()
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  return Math.max(-maxAbs, Math.min(maxAbs, z * sd))
+}
+
 function generatePersons(opts: GenerateOptions): Person[] {
   const { count, male_pct, age_min, age_max, region } = opts
   const persons: Person[] = []
@@ -310,8 +318,10 @@ function generatePersons(opts: GenerateOptions): Person[] {
       demographics,
     }
 
-    // Assign PIAAC score deterministically from demographics — no random component
-    const piaacScore = Math.round(computeExpectedScore(p))
+    // Assign PIAAC score from demographics + small Gaussian jitter (±20 pts, SD≈7)
+    const basePiaac = computeExpectedScore(p)
+    const jitter = clampedGaussian(7, 20)
+    const piaacScore = Math.round(Math.max(0, Math.min(500, basePiaac + jitter)))
     ;(p.demographics as Record<string, unknown>)['numeracy_level'] = scoreToLevel(piaacScore)
     ;(p.demographics as Record<string, unknown>)['piaac_score'] = piaacScore
 
