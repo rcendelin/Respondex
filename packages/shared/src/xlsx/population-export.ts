@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import type { Person, PersonMetadata } from '../types/person.js'
+import { computeExpectedScore, scoreToLevel } from '../numeracy-assigner.js'
 
 // M3: Sanitize string values to prevent formula injection in Excel.
 // Strip embedded newlines (bypass vector), then prefix-escape formula-starting chars.
@@ -14,7 +15,8 @@ function sanitizeForExcel(val: string): string {
 
 // Fixed column names used in export — custom fields must not collide with these
 const FIXED_COLUMN_NAMES = new Set([
-  'ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj', 'Životní příběh',
+  'ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj',
+  'PIAAC skóre', 'PIAAC úroveň', 'Životní příběh',
 ])
 
 /**
@@ -53,6 +55,10 @@ export function generatePopulationXlsx(persons: Person[], metadata?: Partial<Per
       'Status': sanitizeForExcel(p.demographics?.employment_status ?? ''),
       'Příjem': sanitizeForExcel(p.demographics?.income_level ?? ''),
       'Kraj': sanitizeForExcel(p.demographics?.region ?? ''),
+      'PIAAC skóre': p.demographics?.piaac_score ?? Math.round(computeExpectedScore(p)),
+      'PIAAC úroveň': sanitizeForExcel(
+        scoreToLevel(Math.round(p.demographics?.piaac_score ?? computeExpectedScore(p)))
+      ),
       'Životní příběh': p.life_story ? sanitizeForExcel(p.life_story) : '',
       // Flatten sanitized custom fields (capped at MAX_CUSTOM_FIELDS)
       ...sanitizedCustom,
@@ -81,6 +87,8 @@ export function generatePopulationXlsx(persons: Person[], metadata?: Partial<Per
     { wch: 30 }, // Status
     { wch: 18 }, // Příjem
     { wch: 20 }, // Kraj
+    { wch: 12 }, // PIAAC skóre
+    { wch: 16 }, // PIAAC úroveň
     { wch: 60 }, // Životní příběh
   ]
 
