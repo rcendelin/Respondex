@@ -646,7 +646,6 @@ function PopulationCharts({ persons }: { persons: Person[] }) {
   const educationData = countBy(persons, (p) => displayVal(p.demographics?.education))
   const employmentData = countBy(persons, (p) => displayVal(p.demographics?.employment_status))
   const incomeData = countBy(persons, (p) => displayVal(p.demographics?.income_level))
-  const regionData = countBy(persons, (p) => displayVal(p.demographics?.region))
   const ageData = ageHistogram(persons)
   const piaacData = piaacDistribution(persons)
 
@@ -658,10 +657,9 @@ function PopulationCharts({ persons }: { persons: Person[] }) {
         <MiniBarChart title="PIAAC úroveň" data={piaacData} />
         <MiniPieChart title="Příjem" data={incomeData.map((d, i) => ({ ...d, color: CHART_COLORS[i % CHART_COLORS.length]! }))} />
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <MiniBarChart title="Vzdělání" data={educationData} colorByName />
         <MiniBarChart title="Zaměstnanecký status" data={employmentData} colorByName />
-        <MiniBarChart title="Kraj" data={regionData} colorByName />
       </div>
     </div>
   )
@@ -742,7 +740,6 @@ function PersonsTable({ persons }: { persons: Person[] }) {
   const partnerOpts = ['Ano', 'Ne']
   const employmentOpts = uniqueValues(persons, (p) => p.demographics?.employment_status)
   const incomeOpts = uniqueValues(persons, (p) => p.demographics?.income_level)
-  const regionOpts = uniqueValues(persons, (p) => p.demographics?.region)
   const piaacLevelOpts = ['<1', 'L1', 'L2', 'L3', 'L4', 'L5']
   const storyOpts = ['Ano', 'Ne']
 
@@ -757,7 +754,6 @@ function PersonsTable({ persons }: { persons: Person[] }) {
     }
     if (filters['employment'] && displayVal(p.demographics?.employment_status) !== filters['employment']) return false
     if (filters['income'] && displayVal(p.demographics?.income_level) !== filters['income']) return false
-    if (filters['region'] && displayVal(p.demographics?.region) !== filters['region']) return false
     if (filters['piaac']) {
       const score = p.demographics?.piaac_score ?? computeExpectedScore(p)
       if (piaacLevelLabel(score) !== filters['piaac']) return false
@@ -809,7 +805,6 @@ function PersonsTable({ persons }: { persons: Person[] }) {
             <FilterHeader label="Partner" values={partnerOpts} selected={filters['partner'] ?? ''} onChange={(v) => setFilter('partner', v)} />
             <FilterHeader label="Status" values={employmentOpts} selected={filters['employment'] ?? ''} onChange={(v) => setFilter('employment', v)} />
             <FilterHeader label="Příjem" values={incomeOpts} selected={filters['income'] ?? ''} onChange={(v) => setFilter('income', v)} />
-            <FilterHeader label="Kraj" values={regionOpts} selected={filters['region'] ?? ''} onChange={(v) => setFilter('region', v)} />
             <FilterHeader label="PIAAC" values={piaacLevelOpts} selected={filters['piaac'] ?? ''} onChange={(v) => setFilter('piaac', v)} icon={<Brain className="h-3 w-3" />} />
             <FilterHeader label="Příběh" values={storyOpts} selected={filters['story'] ?? ''} onChange={(v) => setFilter('story', v)} />
           </tr>
@@ -817,7 +812,7 @@ function PersonsTable({ persons }: { persons: Person[] }) {
         <tbody>
           {filtered.length === 0 && (
             <tr>
-              <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
+              <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
                 Žádné osoby neodpovídají zvoleným filtrům.
               </td>
             </tr>
@@ -845,7 +840,6 @@ function PersonsTable({ persons }: { persons: Person[] }) {
                   <td className="px-3 py-2">{displayVal(p.demographics?.has_partner)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.employment_status)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.income_level)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{displayVal(p.demographics?.region)}</td>
                   <td className="px-3 py-2">
                     <span
                       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border tabular-nums ${piaacScoreColor(piaacScore)}`}
@@ -864,7 +858,7 @@ function PersonsTable({ persons }: { persons: Person[] }) {
                 </tr>
                 {isExpanded && (
                   <tr key={`${p.id}-detail`} className="border-b bg-muted/10">
-                    <td colSpan={12} className="px-6 py-4">
+                    <td colSpan={11} className="px-6 py-4">
                       <div className="space-y-3">
                         {/* Full ID */}
                         <div className="flex gap-2 text-xs">
