@@ -133,7 +133,7 @@ async function getPersons(req: HttpRequest, ctx: InvocationContext): Promise<Htt
 
     const persons = await svc.readJson<Person[]>(`data/populations/${id}/persons.json`)
     const offset = Math.max(0, parseInt(req.query.get('offset') ?? '0', 10) || 0)
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.get('limit') ?? '50', 10) || 50))
+    const limit = Math.min(5000, Math.max(1, parseInt(req.query.get('limit') ?? '50', 10) || 50))
     const page = persons.slice(offset, offset + limit)
     return {
       status: 200,
