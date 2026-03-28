@@ -723,6 +723,7 @@ function FilterHeader({
 function PersonsTable({ persons }: { persons: Person[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [filters, setFilters] = useState<Record<string, string>>({})
+  const [currentPage, setCurrentPage] = useState(0)
 
   function setFilter(key: string, value: string) {
     setFilters((prev) => {
@@ -731,6 +732,7 @@ function PersonsTable({ persons }: { persons: Person[] }) {
       else next[key] = value
       return next
     })
+    setCurrentPage(0) // Reset to first page on filter change
   }
 
   // Compute unique values for filter dropdowns
@@ -771,18 +773,25 @@ function PersonsTable({ persons }: { persons: Person[] }) {
   const activeFilterCount = Object.keys(filters).length
   const isFiltered = activeFilterCount > 0
 
+  // Client-side pagination over filtered results
+  const totalFiltered = filtered.length
+  const totalPages = Math.ceil(totalFiltered / PAGE_SIZE)
+  const pageStart = currentPage * PAGE_SIZE
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, totalFiltered)
+  const pagePersons = filtered.slice(pageStart, pageEnd)
+
   return (
-    <div className="overflow-x-auto">
+    <div>
       {/* Filter status bar */}
       {isFiltered && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-primary/5 border-b text-xs">
           <span className="text-muted-foreground">
-            Zobrazeno <strong className="text-foreground">{filtered.length}</strong> z {persons.length} osob
+            Filtrováno: <strong className="text-foreground">{filtered.length}</strong> z {persons.length} osob
             ({activeFilterCount} {activeFilterCount === 1 ? 'filtr' : activeFilterCount < 5 ? 'filtry' : 'filtrů'})
           </span>
           <button
             className="text-primary hover:underline text-xs"
-            onClick={() => setFilters({})}
+            onClick={() => { setFilters({}); setCurrentPage(0) }}
           >
             Zrušit filtry
           </button>
@@ -813,7 +822,7 @@ function PersonsTable({ persons }: { persons: Person[] }) {
               </td>
             </tr>
           )}
-          {filtered.map((p) => {
+          {pagePersons.map((p) => {
             const isExpanded = expandedId === p.id
             const hasStory = !!p.life_story
             const piaacScore = p.demographics?.piaac_score ?? computeExpectedScore(p)
@@ -905,14 +914,35 @@ function PersonsTable({ persons }: { persons: Person[] }) {
           })}
         </tbody>
       </table>
+      {/* Pagination */}
+      {totalFiltered > PAGE_SIZE && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-t bg-muted/30">
+          <span className="text-xs text-muted-foreground">
+            {pageStart + 1}–{pageEnd} z {totalFiltered}{isFiltered ? ` (filtrováno z ${persons.length})` : ''} osob
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon" className="h-7 w-7"
+              disabled={currentPage === 0}
+              onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-muted-foreground px-2 tabular-nums">{currentPage + 1} / {totalPages}</span>
+            <Button variant="outline" size="icon" className="h-7 w-7"
+              disabled={currentPage >= totalPages - 1}
+              onClick={() => setCurrentPage((p) => p + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function PopulationDetailDialog({ population, onClose, onPopulationChanged }: PopulationDetailDialogProps) {
-  const [persons, setPersons] = useState<Person[]>([])
+  const [allPersons, setAllPersons] = useState<Person[]>([])
   const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [page, setPage] = useState(0)
   const [loadingPersons, setLoadingPersons] = useState(false)
   const [personsError, setPersonsError] = useState<string | null>(null)
   const [generateOpen, setGenerateOpen] = useState(false)
@@ -921,24 +951,20 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
   const [missingStories, setMissingStories] = useState(0)
   const [refreshKey, setRefreshKey] = useState(0)
   const [viewMode, setViewMode] = useState<'table' | 'charts'>('table')
-  const [allPersons, setAllPersons] = useState<Person[] | null>(null)
-  const [loadingAll, setLoadingAll] = useState(false)
 
+  // Load ALL persons at once for filtering/charts to work across full dataset
   useEffect(() => {
     if (!population) return
     let cancelled = false
     setLoadingPersons(true)
     setPersonsError(null)
-    getPersons(population.id, offset, PAGE_SIZE)
-      .then((page) => {
+    getPersons(population.id, 0, 5000)
+      .then((result) => {
         if (!cancelled) {
-          setPersons(page.persons)
-          setTotal(page.total)
-          if (offset === 0) {
-            const missingOnPage = page.persons.filter((p) => !p.life_story).length
-            const ratio = page.persons.length > 0 ? missingOnPage / page.persons.length : 0
-            setMissingStories(Math.round(ratio * page.total))
-          }
+          setAllPersons(result.persons)
+          setTotal(result.total)
+          const missing = result.persons.filter((p) => !p.life_story).length
+          setMissingStories(missing)
         }
       })
       .catch((err) => {
@@ -946,46 +972,29 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
       })
       .finally(() => { if (!cancelled) setLoadingPersons(false) })
     return () => { cancelled = true }
-  }, [population, offset, refreshKey])
-
-  // Load all persons when switching to chart view
-  useEffect(() => {
-    if (viewMode !== 'charts' || !population || allPersons !== null) return
-    let cancelled = false
-    setLoadingAll(true)
-    getPersons(population.id, 0, 2000)
-      .then((page) => { if (!cancelled) setAllPersons(page.persons) })
-      .catch(() => { /* fallback to page data */ })
-      .finally(() => { if (!cancelled) setLoadingAll(false) })
-    return () => { cancelled = true }
-  }, [viewMode, population, allPersons])
+  }, [population, refreshKey])
 
   function handleClose() {
-    setPersons([]); setTotal(0); setOffset(0); setPersonsError(null)
+    setAllPersons([]); setTotal(0); setPage(0); setPersonsError(null)
     setEnrichResult(null); setMissingStories(0); setRefreshKey(0)
-    setViewMode('table'); setAllPersons(null); setLoadingAll(false)
+    setViewMode('table')
     onClose()
   }
 
   function handleEnriched(result: { enriched: number; failed: number }) {
     setEnrichOpen(false)
     setEnrichResult(result)
-    setOffset(0)
+    setPage(0)
     setRefreshKey((k) => k + 1)
     onPopulationChanged()
   }
 
   function handleGenerated() {
     setGenerateOpen(false)
-    setOffset(0)
+    setPage(0)
     setRefreshKey((k) => k + 1)
     onPopulationChanged()
   }
-
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-  const currentPage = Math.floor(offset / PAGE_SIZE) + 1
-  const rangeStart = total === 0 ? 0 : offset + 1
-  const rangeEnd = Math.min(offset + PAGE_SIZE, total)
 
   return (
     <>
@@ -1053,7 +1062,7 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
             {personsError && (
               <p className="text-sm text-destructive px-6 py-4">{personsError}</p>
             )}
-            {!loadingPersons && !personsError && persons.length === 0 && (
+            {!loadingPersons && !personsError && allPersons.length === 0 && (
               <p className="text-sm text-muted-foreground px-6 py-8 text-center">
                 Populace neobsahuje žádné osoby.{' '}
                 <button className="underline" onClick={() => setGenerateOpen(true)}>
@@ -1062,39 +1071,13 @@ function PopulationDetailDialog({ population, onClose, onPopulationChanged }: Po
                 {' '}nebo importujte XLSX.
               </p>
             )}
-            {!loadingPersons && persons.length > 0 && viewMode === 'table' && (
-              <PersonsTable persons={persons} />
+            {!loadingPersons && allPersons.length > 0 && viewMode === 'table' && (
+              <PersonsTable persons={allPersons} />
             )}
-            {viewMode === 'charts' && (
-              loadingAll
-                ? <p className="text-sm text-muted-foreground px-6 py-8 text-center">Načítám data pro grafy…</p>
-                : (allPersons ?? persons).length > 0
-                  ? <PopulationCharts persons={allPersons ?? persons} />
-                  : null
+            {!loadingPersons && allPersons.length > 0 && viewMode === 'charts' && (
+              <PopulationCharts persons={allPersons} />
             )}
           </div>
-
-          {/* Pagination */}
-          {total > 0 && (
-            <div className="flex items-center justify-between px-6 py-3 border-t flex-shrink-0 bg-muted/30">
-              <span className="text-xs text-muted-foreground">
-                {rangeStart}–{rangeEnd} z {total} osob
-              </span>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="icon" className="h-7 w-7"
-                  disabled={offset === 0 || loadingPersons}
-                  onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-xs text-muted-foreground px-2">{currentPage} / {totalPages}</span>
-                <Button variant="outline" size="icon" className="h-7 w-7"
-                  disabled={offset + PAGE_SIZE >= total || loadingPersons}
-                  onClick={() => setOffset((o) => o + PAGE_SIZE)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 
