@@ -174,6 +174,8 @@ export function parseQuestionnaireXlsx(
     const is_numeric = jeNumerickaRaw ? parseBoolean(jeNumerickaRaw) : undefined
     const spravnaOdpovedRaw = String(row['SpravnaOdpoved'] ?? '').trim()
     const correct_answer = spravnaOdpovedRaw ? Number(spravnaOdpovedRaw) : undefined
+    const spravnostCsuRaw = String(row['SpravnostCSU'] ?? row['CorrectRate'] ?? '').trim()
+    const correct_rate = spravnostCsuRaw ? Number(spravnostCsuRaw) : undefined
 
     const question: Question = {
       id,
@@ -188,6 +190,7 @@ export function parseQuestionnaireXlsx(
       ...(skalaMaxPopisek ? { scale_max_label: skalaMaxPopisek } : {}),
       ...(is_numeric != null ? { is_numeric } : {}),
       ...(correct_answer !== undefined && !isNaN(correct_answer) ? { correct_answer } : {}),
+      ...(correct_rate !== undefined && !isNaN(correct_rate) && correct_rate > 0 && correct_rate < 1 ? { correct_rate } : {}),
       ...(skip_logic ? { skip_logic } : {}),
       ...(pipingFrom ? { piping_from: pipingFrom } : {}),
     }

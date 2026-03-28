@@ -37,6 +37,7 @@ export const QuestionSchema = z
     required: z.boolean(),
     is_numeric: z.boolean().optional(),
     correct_answer: z.number().optional(),
+    correct_rate: z.number().min(0.01).max(0.99).optional(),
     error_attractors: z.array(ErrorAttractorSchema).max(20).optional(),
     skip_logic: SkipLogicSchema.optional(),
     piping_from: z.string().max(50).optional(),

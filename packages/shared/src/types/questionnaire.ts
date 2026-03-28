@@ -62,6 +62,10 @@ export interface Question {
   is_numeric?: boolean
   /** The correct/expected numeric answer (required when is_numeric is true) */
   correct_answer?: number
+  /** Reference correct-answer rate for Czech population (0.0–1.0).
+   *  When provided, IRT difficulty is back-calibrated so the population
+   *  average P(correct) matches this rate. Source: PIAAC / ČSÚ / pilot data. */
+  correct_rate?: number
   /** Manual override: specific wrong answers that incorrect respondents gravitate toward */
   error_attractors?: ErrorAttractor[]
   /** Conditional display logic */

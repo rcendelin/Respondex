@@ -78,13 +78,57 @@ const CONDITIONAL_NEGATION = /pokud|jestliže|kdyby|ne[bv]|kromě|s\s+výjimkou/
 
 // ── Core Functions ───────────────────────────────────────────────────────
 
+// ── Czech PIAAC population theta distribution ──────────────────────────
+// Approximate shares: Below1=4%, L1=12%, L2=33%, L3=35%, L4=14%, L5=2%
+// Representative theta values per segment (using piaacScoreToTheta with midpoint scores)
+const CZ_POPULATION_SEGMENTS: { theta: number; weight: number }[] = [
+  { theta: -2.44, weight: 0.04 },  // Below 1 (score ~150)
+  { theta: -1.40, weight: 0.12 },  // Level 1  (score ~200)
+  { theta: -0.35, weight: 0.33 },  // Level 2  (score ~250)
+  { theta:  0.69, weight: 0.35 },  // Level 3  (score ~300)
+  { theta:  1.73, weight: 0.14 },  // Level 4  (score ~350)
+  { theta:  3.19, weight: 0.02 },  // Level 5  (score ~420)
+]
+
+/**
+ * Back-calibrate IRT difficulty parameter `b` so that the weighted
+ * population-average P(correct) matches the target `correct_rate`.
+ *
+ * Uses bisection search: find `b` such that
+ *   sum_i [ weight_i × sigmoid(a × (theta_i − b)) ] ≈ target
+ */
+function calibrateDifficulty(targetRate: number, discrimination: number): number {
+  let lo = -4.0
+  let hi = 4.0
+  for (let iter = 0; iter < 50; iter++) {
+    const mid = (lo + hi) / 2
+    let avgP = 0
+    for (const seg of CZ_POPULATION_SEGMENTS) {
+      avgP += seg.weight / (1 + Math.exp(-discrimination * (seg.theta - mid)))
+    }
+    if (avgP > targetRate) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
+}
+
 /**
  * Estimate question difficulty and discrimination from question metadata.
- * No LLM call needed — purely rule-based.
+ * If `correct_rate` is provided, back-calibrates difficulty to match the
+ * reference correct-answer rate for the Czech population.
+ * Otherwise, uses rule-based heuristics.
  */
 export function estimateQuestionDifficulty(question: Question): ItemParams {
-  let b = DIFFICULTY_BASE[question.type] ?? 0.0
   const a = DISCRIMINATION_BASE[question.type] ?? 0.7
+
+  // Reference-calibrated path: if correct_rate is provided, back-calculate difficulty
+  if (question.correct_rate != null && question.correct_rate > 0 && question.correct_rate < 1) {
+    const b = calibrateDifficulty(question.correct_rate, a)
+    return { difficulty: b, discrimination: a }
+  }
+
+  // Fallback: rule-based heuristic difficulty estimation
+  let b = DIFFICULTY_BASE[question.type] ?? 0.0
 
   // Difficulty modifiers based on question content.
   // Modifiers are smaller and capped so they don't stack to absurd levels.
