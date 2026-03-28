@@ -6,11 +6,13 @@ export enum Gender {
 }
 
 export enum Education {
+  NO_EDUCATION = 'Bez vzdělání',
   PRIMARY = 'Základní',
   VOCATIONAL = 'Vyučení',
   SECONDARY = 'S maturitou',
   HIGHER_VOCATIONAL = 'Vyšší odborné',
   UNIVERSITY = 'Vysokoškolské',
+  UNKNOWN = 'Nezjištěno',
 }
 
 export enum MaritalStatus {
@@ -28,6 +30,7 @@ export enum EmploymentStatus {
   STUDENT = 'Student/ka',
   RETIRED = 'Důchodce/kyně',
   MATERNITY_LEAVE = 'Mateřská/rodičovská dovolená',
+  ECONOMICALLY_INACTIVE = 'Ekonomicky neaktivní jinak',
   OTHER = 'Jiné',
 }
 

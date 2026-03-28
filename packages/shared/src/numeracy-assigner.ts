@@ -49,6 +49,7 @@ export function toAgeGroup(age: number): AgeGroup {
 export function toNumeracyEducation(education?: Education): NumeracyEducation {
   if (!education) return 'upper_secondary' // default if unknown
   switch (education) {
+    case Education.NO_EDUCATION:
     case Education.PRIMARY:
     case Education.VOCATIONAL:
       return 'below_secondary'
@@ -57,6 +58,7 @@ export function toNumeracyEducation(education?: Education): NumeracyEducation {
       return 'upper_secondary'
     case Education.UNIVERSITY:
       return 'tertiary'
+    case Education.UNKNOWN:
     default:
       return 'upper_secondary'
   }

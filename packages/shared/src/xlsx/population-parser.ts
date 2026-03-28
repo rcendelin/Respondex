@@ -68,8 +68,10 @@ function toBoolean(val: string | number | boolean): boolean {
 const EDUCATION_ALIASES: Record<string, string> = {
   // ČSÚ / MPSV / school-registry terminology
   'základní vzdělání':                         'Základní',
+  'základní (vč. neukončeného)':               'Základní',
   'neúplné základní vzdělání':                 'Základní',
-  'bez vzdělání':                              'Základní',
+  'bez vzdělání':                              'Bez vzdělání',
+  'nezjištěno':                                'Nezjištěno',
   'střední bez maturity':                      'Vyučení',
   'střední bez maturity (vč. vyučení)':        'Vyučení',
   'vyučení bez maturity':                      'Vyučení',
@@ -116,6 +118,8 @@ const EMPLOYMENT_ALIASES: Record<string, string> = {
   'mateřská dovolená':                         'Mateřská/rodičovská dovolená',
   'rodičovská dovolená':                       'Mateřská/rodičovská dovolená',
   'md/rd':                                     'Mateřská/rodičovská dovolená',
+  'ekonomicky neaktivní':                        'Ekonomicky neaktivní jinak',
+  'neaktivní':                                   'Ekonomicky neaktivní jinak',
 }
 
 const INCOME_ALIASES: Record<string, string> = {
