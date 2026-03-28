@@ -439,8 +439,9 @@ export function PorovnaniPage() {
                     setSelectedTestId('')
                     setComparison(null)
                     loadTests()
-                  } catch { /* ignore */ }
-                  finally { setDeleting(false) }
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Chyba při mazání testu')
+                  } finally { setDeleting(false) }
                 }}
               >
                 <Trash2 className="h-4 w-4" />

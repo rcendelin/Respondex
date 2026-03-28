@@ -20,13 +20,8 @@ async function listABTests(_req: HttpRequest): Promise<HttpResponseInit> {
   const svc = storage()
   try {
     const blobs = await svc.listBlobs('data/ab-tests/')
-    const configs: ABTestConfig[] = []
-    for (const blob of blobs) {
-      if (blob.endsWith('/config.json')) {
-        const config = await svc.readJson<ABTestConfig>(blob)
-        configs.push(config)
-      }
-    }
+    const configBlobs = blobs.filter((b) => b.endsWith('/config.json'))
+    const configs = await Promise.all(configBlobs.map((b) => svc.readJson<ABTestConfig>(b)))
     configs.sort((a, b) => b.created_at.localeCompare(a.created_at))
     return { status: 200, jsonBody: configs }
   } catch {
@@ -64,41 +59,41 @@ async function getABTestResults(req: HttpRequest): Promise<HttpResponseInit> {
       const config = await svc.readJson<ABTestConfig>(configPath)
 
       const questionsPath = `data/questionnaires/${config.questionnaire_id}/questions.json`
-      let questions: Question[]
-      try {
-        questions = await svc.readJson<Question[]>(questionsPath)
-      } catch {
-        return { status: 400, jsonBody: { error: `Dotazník ${config.questionnaire_id} nenalezen (${questionsPath})` } }
-      }
-
       const personsPath = `data/populations/${config.population_id}/persons.json`
+
+      let questions: Question[]
       let persons: Person[]
       try {
-        persons = await svc.readJson<Person[]>(personsPath)
-      } catch {
+        ;[questions, persons] = await Promise.all([
+          svc.readJson<Question[]>(questionsPath),
+          svc.readJson<Person[]>(personsPath),
+        ])
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : ''
+        if (msg.includes(config.questionnaire_id) || msg.includes('questionnaires')) {
+          return { status: 400, jsonBody: { error: `Dotazník ${config.questionnaire_id} nenalezen (${questionsPath})` } }
+        }
         return { status: 400, jsonBody: { error: `Populace ${config.population_id} nenalezena (${personsPath})` } }
       }
 
       // Load responses for each arm
       const armData: { arm_id: string; arm_name: string; responses: SimulationResponse[] }[] = []
 
-      for (const arm of config.arms) {
-        const allResponses: SimulationResponse[] = []
-        for (const simId of arm.simulation_ids) {
+      await Promise.all(config.arms.map(async (arm) => {
+        const simChunks = await Promise.all(arm.simulation_ids.map(async (simId) => {
           try {
             const chunkBlobs = await svc.listBlobs(`data/simulations/${simId}/responses/`)
-            for (const blob of chunkBlobs) {
-              const chunk = await svc.readJson<SimulationResponse[]>(blob)
-              allResponses.push(...chunk)
-            }
+            const chunks = await Promise.all(chunkBlobs.map((blob) => svc.readJson<SimulationResponse[]>(blob)))
+            return chunks.flat()
           } catch {
-            // Simulation not found or incomplete — skip
+            return [] as SimulationResponse[]
           }
-        }
+        }))
+        const allResponses = simChunks.flat()
         if (allResponses.length > 0) {
           armData.push({ arm_id: arm.id, arm_name: arm.name, responses: allResponses })
         }
-      }
+      }))
 
       if (armData.length < 2) {
         return { status: 400, jsonBody: { error: `Nedostatek dokončených ramen pro srovnání (${armData.length} z ${config.arms.length})` } }
@@ -119,8 +114,10 @@ async function getABTestResults(req: HttpRequest): Promise<HttpResponseInit> {
       }
 
       // Cache results
-      await svc.writeJson(`data/ab-tests/${id}/comparison.json`, comparison)
-      await svc.writeJson(`data/ab-tests/${id}/config.json`, config) // updated with arm metrics
+      await Promise.all([
+        svc.writeJson(`data/ab-tests/${id}/comparison.json`, comparison),
+        svc.writeJson(`data/ab-tests/${id}/config.json`, config), // updated with arm metrics
+      ])
 
       return { status: 200, jsonBody: comparison }
     } catch (err) {

@@ -42,11 +42,9 @@ const NUMERIC_TYPES = new Set([
  */
 function computeInterArmQuestionMetric(
   question: Question,
-  armResponses: SimulationResponse[],
-  baselineResponses: SimulationResponse[],
+  armValid: SimulationResponse[],
+  baseValid: SimulationResponse[],
 ): QuestionMetric {
-  const armValid = armResponses.filter((r) => r.question_id === question.id && r.valid)
-  const baseValid = baselineResponses.filter((r) => r.question_id === question.id && r.valid)
 
   if (NUMERIC_TYPES.has(question.type)) {
     const armVals = armValid.map((r) => Number(r.answer)).filter((v) => !isNaN(v))
@@ -119,8 +117,11 @@ export function computeArmMetricsInterArm(
   baselineResponses: SimulationResponse[],
   questions: Question[],
 ): ABTestMetrics {
+  const armByQ = groupValidByQuestion(armResponses)
+  const baseByQ = groupValidByQuestion(baselineResponses)
+
   const perQuestion: QuestionMetric[] = questions.map((q) =>
-    computeInterArmQuestionMetric(q, armResponses, baselineResponses)
+    computeInterArmQuestionMetric(q, armByQ.get(q.id) ?? [], baseByQ.get(q.id) ?? [])
   )
 
   return {
@@ -143,9 +144,11 @@ export function computeArmMetricsWithReference(
   const matched = referenceQuestions.filter((ref) => questionMap.has(ref.id))
   if (matched.length === 0) return { per_question: [], aggregate: emptyAggregate() }
 
+  const byQuestion = groupValidByQuestion(responses)
+
   const perQuestion: QuestionMetric[] = matched.map((ref) => {
     const question = questionMap.get(ref.id)!
-    return computeReferenceQuestionMetric(question, responses, ref, persons)
+    return computeReferenceQuestionMetric(question, byQuestion.get(ref.id) ?? [], ref, persons)
   })
 
   return {
@@ -156,11 +159,10 @@ export function computeArmMetricsWithReference(
 
 function computeReferenceQuestionMetric(
   question: Question,
-  responses: SimulationResponse[],
+  valid: SimulationResponse[],
   reference: ReferenceQuestion,
   persons: Person[],
 ): QuestionMetric {
-  const valid = responses.filter((r) => r.question_id === question.id && r.valid)
 
   if (NUMERIC_TYPES.has(question.type) && reference.reference_distribution.mean !== undefined) {
     const values = valid.map((r) => Number(r.answer)).filter((v) => !isNaN(v))
@@ -335,6 +337,17 @@ function buildComparison(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+function groupValidByQuestion(responses: SimulationResponse[]): Map<string, SimulationResponse[]> {
+  const map = new Map<string, SimulationResponse[]>()
+  for (const r of responses) {
+    if (!r.valid) continue
+    let list = map.get(r.question_id)
+    if (!list) { list = []; map.set(r.question_id, list) }
+    list.push(r)
+  }
+  return map
+}
 
 function countAnswers(responses: SimulationResponse[]): Map<string, number> {
   const counts = new Map<string, number>()

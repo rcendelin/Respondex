@@ -7,7 +7,7 @@
  * Import this into Respondex as a questionnaire, then run simulations against it.
  */
 
-const XLSX = require('../packages/shared/node_modules/xlsx')
+const XLSX = require('xlsx')
 const path = require('path')
 
 const questions = [
