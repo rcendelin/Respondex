@@ -134,6 +134,11 @@ function weightedSample(attractors: ErrorAttractor[]): ErrorAttractor {
   return attractors[attractors.length - 1]!
 }
 
+/** Check if a number is "round" (exact integer divisible by 5 or 10) */
+function isRoundNumber(n: number): boolean {
+  return Number.isInteger(n) && (n % 5 === 0)
+}
+
 function generateAttractorAnswer(
   correctAnswer: number,
   question: Question,
@@ -146,14 +151,24 @@ function generateAttractorAnswer(
   )
 
   if (applicable.length === 0) {
-    // No attractors for this tier — fall back to generic
-    return generateIncorrectAnswer(correctAnswer, question, piaacScore)
+    // No attractors for this tier — generate a "nearby error" instead of generic system
+    // Educated people who err make small mistakes, not absurd ones
+    const errorPct = tier === 'high' ? 0.05 : tier === 'mid' ? 0.10 : 0.15
+    const direction = Math.random() < 0.5 ? 1 : -1
+    let answer = Math.round(correctAnswer * (1 + direction * errorPct * (0.5 + Math.random())))
+    const scaleMin = question.scale_min ?? 0
+    const scaleMax = question.scale_max ?? correctAnswer * 10
+    answer = Math.max(scaleMin, Math.min(scaleMax, answer))
+    if (answer === correctAnswer) answer += direction * Math.max(1, Math.ceil(Math.abs(correctAnswer) * 0.02))
+    return { answer, errorType: ErrorType.ATTRACTOR, attractorLabel: 'Blízká chyba (fallback)' }
   }
 
   const selected = weightedSample(applicable)
 
-  // Apply ±2% jitter so answers aren't identical across respondents
-  const jitter = 1 + (Math.random() - 0.5) * 0.04
+  // Jitter: round numbers get minimal jitter (people answer "300" not "296")
+  // Non-round numbers get ±2% jitter for variety
+  const jitterScale = isRoundNumber(selected.value) ? 0.005 : 0.04
+  const jitter = 1 + (Math.random() - 0.5) * jitterScale
   let answer = selected.value * jitter
   answer = roundToReasonablePrecision(answer, correctAnswer)
 

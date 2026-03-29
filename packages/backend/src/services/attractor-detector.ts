@@ -164,6 +164,16 @@ function generatePercentageOfTotalAttractors(
     attractors.push({ value: half, label: 'Odhad — polovina celku', tiers: ['low'], weight: 0.5 })
   }
 
+  // Mid/high: slight miscalculation (e.g., 110 instead of 100)
+  const slight = Math.round(correct * 1.1)
+  if (slight !== correct) {
+    attractors.push({ value: slight, label: 'Drobná chyba ve výpočtu (+10 %)', tiers: ['mid', 'high'], weight: 2 })
+  }
+  const slightNeg = Math.round(correct * 0.9)
+  if (slightNeg !== correct && slightNeg > 0) {
+    attractors.push({ value: slightNeg, label: 'Drobná chyba ve výpočtu (−10 %)', tiers: ['mid', 'high'], weight: 1.5 })
+  }
+
   return attractors
 }
 
@@ -190,7 +200,7 @@ function generatePercentageDiscountAttractors(
 
   // Return original price (forgot discount)
   if (fullPrice !== correct) {
-    attractors.push({ value: fullPrice, label: 'Zapomněl/a slevu — původní cena', tiers: ['low'], weight: 2 })
+    attractors.push({ value: fullPrice, label: 'Zapomněl/a slevu — původní cena', tiers: ['low', 'mid'], weight: 2 })
   }
 
   // Double instead of halve (or similar)
@@ -210,6 +220,21 @@ function generatePercentageDiscountAttractors(
     attractors.push({ value: pct, label: 'Jen číslo procent', tiers: ['low'], weight: 0.5 })
   }
 
+  // Mid/high: nearby rounding or slight error
+  const nearbyUp = Math.round(correct * 1.1)
+  if (nearbyUp !== correct) {
+    attractors.push({ value: nearbyUp, label: 'Drobná chyba — o 10 % víc', tiers: ['mid', 'high'], weight: 2 })
+  }
+  const nearbyDown = Math.round(correct * 0.9)
+  if (nearbyDown !== correct && nearbyDown > 0) {
+    attractors.push({ value: nearbyDown, label: 'Drobná chyba — o 10 % méně', tiers: ['mid', 'high'], weight: 1.5 })
+  }
+  // High: confuse discount direction (e.g., add pct instead of subtract)
+  const addedDiscount = Math.round(base * (1 + pct / 100))
+  if (addedDiscount !== correct) {
+    attractors.push({ value: addedDiscount, label: 'Přičtení slevy místo odečtení', tiers: ['mid', 'high'], weight: 1 })
+  }
+
   return attractors
 }
 
@@ -220,7 +245,6 @@ function generateFractionAttractors(
   const fraction = numerator / denominator
 
   // Multiply instead of divide (or vice versa)
-  // If correct = given / fraction, error = given * fraction
   const inverted = Math.round(given * fraction)
   if (inverted !== correct) {
     attractors.push({ value: inverted, label: 'Násobení místo dělení zlomkem', tiers: ['low', 'mid'], weight: 3 })
@@ -248,6 +272,21 @@ function generateFractionAttractors(
   const squared = Math.round(correct * fraction * fraction)
   if (squared !== correct && squared > 0) {
     attractors.push({ value: squared, label: 'Zlomek aplikován dvakrát', tiers: ['low'], weight: 0.5 })
+  }
+
+  // Mid/high: off by rounding or slight miscalculation
+  const slightOver = Math.round(correct * 1.05)
+  if (slightOver !== correct) {
+    attractors.push({ value: slightOver, label: 'Nepřesné dělení (+5 %)', tiers: ['mid', 'high'], weight: 2 })
+  }
+  const slightUnder = Math.round(correct * 0.95)
+  if (slightUnder !== correct && slightUnder > 0) {
+    attractors.push({ value: slightUnder, label: 'Nepřesné dělení (−5 %)', tiers: ['mid', 'high'], weight: 2 })
+  }
+  // High: use wrong fraction (e.g., 3/4 instead of 2/3)
+  const wrongFrac = Math.round(given / ((numerator + 1) / denominator))
+  if (wrongFrac !== correct && wrongFrac > 0) {
+    attractors.push({ value: wrongFrac, label: 'Záměna zlomku (blízký)', tiers: ['high'], weight: 1 })
   }
 
   return attractors
@@ -293,6 +332,18 @@ function generateCompoundInterestAttractors(
     if (shortPeriod !== correct && shortPeriod !== oneYear) {
       attractors.push({ value: shortPeriod, label: `Složený úrok za ${years - 1} rok/y`, tiers: ['mid', 'high'], weight: 1 })
     }
+  }
+
+  // Mid/high: slight rounding error in compound calculation
+  const roundedCompound = Math.round(principal * (1 + rate * years) + principal * rate * rate)
+  if (roundedCompound !== correct && roundedCompound !== simpleResult) {
+    attractors.push({ value: roundedCompound, label: 'Přibližný složený úrok (zaokrouhlení)', tiers: ['mid', 'high'], weight: 1.5 })
+  }
+
+  // High: off by rounding to nearest 10/100
+  const roundedCorrect = Math.round(correct / 10) * 10
+  if (roundedCorrect !== correct) {
+    attractors.push({ value: roundedCorrect, label: 'Zaokrouhlení na desítky', tiers: ['high'], weight: 1 })
   }
 
   return attractors
