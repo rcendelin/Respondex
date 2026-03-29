@@ -75,6 +75,15 @@ export interface CalibrationResult {
   run_at: string
 }
 
+export interface PromptLogsPage {
+  simulation_id: string
+  logs: import('./simulation.js').PromptLog[]
+  total: number
+  page: number
+  size: number
+  total_pages: number
+}
+
 export interface AnalyticsResult {
   simulation_id: string
   computed_at: string

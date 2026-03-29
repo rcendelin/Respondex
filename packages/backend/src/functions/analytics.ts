@@ -3,7 +3,7 @@ import { BlobStorageService } from '../services/storage.js'
 import { computeAnalytics, computeCrossTabs } from '../services/analytics.js'
 import { generateResultsXlsx } from '@respondex/shared'
 import { SimulationStatus } from '@respondex/shared'
-import type { SimulationResponse, SimulationMeta, Question, Person, AnalyticsResult } from '@respondex/shared'
+import type { SimulationResponse, SimulationMeta, Question, Person, AnalyticsResult, PromptLog, PromptLogsPage } from '@respondex/shared'
 import { NotFoundError, ValidationError, ConflictError, errorResponse, requireUUID } from '../lib/errors.js'
 
 /** Allowed demographic group-by values */
@@ -236,6 +236,54 @@ async function exportXlsx(req: HttpRequest, ctx: InvocationContext): Promise<Htt
   }
 }
 
+// ── GET /api/analytics/{simulationId}/logs ────────────────────────────────
+async function getLogs(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const simulationId = requireUUID(req.params['simulationId'], 'simulationId')
+    const url = new URL(req.url)
+    const page = Math.max(0, parseInt(url.searchParams.get('page') ?? '0', 10) || 0)
+    const size = Math.min(200, Math.max(1, parseInt(url.searchParams.get('size') ?? '50', 10) || 50))
+
+    const svc = storage()
+    const metaExists = await svc.blobExists(`data/simulations/${simulationId}/meta.json`)
+    if (!metaExists) throw new NotFoundError('Simulace nebyla nalezena')
+
+    const meta = await svc.readJson<SimulationMeta>(`data/simulations/${simulationId}/meta.json`)
+    if (meta.status !== SimulationStatus.COMPLETED) {
+      throw new ConflictError(`Logy jsou dostupné pouze pro dokončené simulace (stav: ${meta.status})`)
+    }
+
+    // Load all log chunks
+    const logBlobs = (await svc.listBlobs(`data/simulations/${simulationId}/logs/`))
+      .filter(b => b.includes('/logs/chunk-') && b.endsWith('.json'))
+      .sort()
+
+    const allLogs: PromptLog[] = []
+    for (const path of logBlobs) {
+      const chunk = await svc.readJson<PromptLog[]>(path)
+      allLogs.push(...chunk)
+    }
+
+    const total = allLogs.length
+    const totalPages = Math.max(1, Math.ceil(total / size))
+    const start = page * size
+    const pageItems = allLogs.slice(start, start + size)
+
+    const body: PromptLogsPage = {
+      simulation_id: simulationId,
+      logs: pageItems,
+      total,
+      page,
+      size,
+      total_pages: totalPages,
+    }
+
+    return { status: 200, jsonBody: body }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Route registrations ────────────────────────────────────────────────────
 app.http('getAnalyticsSummary', {
   methods: ['GET'],
@@ -256,4 +304,11 @@ app.http('exportAnalyticsXlsx', {
   authLevel: 'anonymous',
   route: 'analytics/{simulationId}/export',
   handler: exportXlsx,
+})
+
+app.http('getAnalyticsLogs', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'analytics/{simulationId}/logs',
+  handler: getLogs,
 })

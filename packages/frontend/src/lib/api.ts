@@ -7,6 +7,7 @@ import type {
   SimulationMeta,
   SimulationConfig,
   AnalyticsResult,
+  PromptLogsPage,
   NumeracyReferenceDataset,
   ABTestConfig,
   ABTestComparison,
@@ -286,6 +287,10 @@ export function getCrossTabs(
   return request(
     `/analytics/${encodeURIComponent(simulationId)}/crosstabs?by=${encodeURIComponent(groupBy)}`
   )
+}
+
+export function getPromptLogs(simulationId: string, page = 0, size = 50): Promise<PromptLogsPage> {
+  return request(`/analytics/${encodeURIComponent(simulationId)}/logs?page=${page}&size=${size}`)
 }
 
 export async function exportAnalyticsXlsx(simulationId: string): Promise<void> {

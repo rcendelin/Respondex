@@ -84,6 +84,23 @@ export interface SimulationResponse {
   }
 }
 
+/** Raw prompt/response log for a single simulation call */
+export interface PromptLog {
+  person_id: string
+  question_id: string
+  run: number
+  /** 'openai' for LLM calls, 'stochastic-piaac' for computational bypasses */
+  source: 'openai' | 'stochastic-piaac'
+  system_prompt: string | null
+  user_prompt: string | null
+  raw_response: string | null
+  model: string
+  temperature: number
+  latency_ms: number | null
+  tokens_used: { prompt: number; completion: number; total: number } | null
+  timestamp: string
+}
+
 export interface SimulationMeta {
   id: string
   config: SimulationConfig

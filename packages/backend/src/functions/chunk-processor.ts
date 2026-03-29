@@ -13,6 +13,7 @@ import type {
   SimulationMeta,
   SimulationResponse,
   SupportedModel,
+  PromptLog,
 } from '@respondex/shared'
 import { SimulationStatus, Strategy, VarianceMode, assignNumeracyProfile, generateStochasticSequence } from '@respondex/shared'
 import { parseChunkMessage } from '../lib/queue.js'
@@ -96,15 +97,17 @@ async function processSimulationChunk(
 
   const openai = new OpenAIService()
   const responses: SimulationResponse[] = []
+  const logs: PromptLog[] = []
 
   // Process sequentially: person × question × run (respects OpenAI rate limits)
   for (const person of chunkPersons) {
     for (const question of questions) {
       for (let run = 1; run <= config.runs_per_person; run++) {
         let response: SimulationResponse | null = null
+        let log: PromptLog | null = null
 
         try {
-          response = await callWithRefusalRetry(
+          const result = await callWithRefusalRetry(
             openai,
             person,
             question,
@@ -115,6 +118,8 @@ async function processSimulationChunk(
             run,
             ctx
           )
+          response = result.response
+          log = result.log
         } catch (err) {
           // Log error without full person data (avoid PII in logs)
           // Error message from OpenAI SDK is safe to log (no user content)
@@ -122,6 +127,7 @@ async function processSimulationChunk(
             `OpenAI call failed for question=${question.id} run=${run}:`,
             err instanceof Error ? err.message : 'unknown error'
           )
+          const ts = new Date().toISOString()
           response = {
             person_id: person.id,
             question_id: question.id,
@@ -132,18 +138,35 @@ async function processSimulationChunk(
             strategy: config.strategy as Strategy,
             model: config.model,
             temperature: config.temperature,
-            timestamp: new Date().toISOString(),
+            timestamp: ts,
+          }
+          log = {
+            person_id: person.id,
+            question_id: question.id,
+            run,
+            source: 'openai',
+            system_prompt: null,
+            user_prompt: null,
+            raw_response: null,
+            model: config.model,
+            temperature: config.temperature,
+            latency_ms: null,
+            tokens_used: null,
+            timestamp: ts,
           }
         }
 
         if (response) responses.push(response)
+        if (log) logs.push(log)
       }
     }
   }
 
-  // Save chunk results
+  // Save chunk results and logs
   const chunkResultPath = `data/simulations/${simulation_id}/responses/chunk-${chunk_number}.json`
+  const chunkLogPath = `data/simulations/${simulation_id}/logs/chunk-${chunk_number}.json`
   await svc.writeJson(chunkResultPath, responses)
+  await svc.writeJson(chunkLogPath, logs)
 
   ctx.log(
     `Chunk ${chunk_number} of simulation ${simulation_id}: ${responses.length} responses saved`
@@ -167,6 +190,11 @@ function safeInvalidReason(reason: string): string {
  * never executed as code. open_text answers are truncated to 2000 chars in parseModelResponse.
  * All other answer types are validated against expected formats/ranges.
  */
+interface CallResult {
+  response: SimulationResponse
+  log: PromptLog
+}
+
 async function callWithRefusalRetry(
   openai: OpenAIService,
   person: Person,
@@ -177,8 +205,23 @@ async function callWithRefusalRetry(
   varianceMode: VarianceMode,
   run: number,
   ctx: InvocationContext
-): Promise<SimulationResponse> {
+): Promise<CallResult> {
   const timestamp = new Date().toISOString()
+
+  const stochasticLog = (m: string): PromptLog => ({
+    person_id: person.id,
+    question_id: question.id,
+    run,
+    source: 'stochastic-piaac',
+    system_prompt: null,
+    user_prompt: null,
+    raw_response: null,
+    model: m,
+    temperature: 0,
+    latency_ms: null,
+    tokens_used: null,
+    timestamp,
+  })
 
   // Serial subtraction bypass: generate sequence + score computationally
   if (question.serial_subtraction) {
@@ -186,15 +229,18 @@ async function callWithRefusalRetry(
     const result = generateStochasticSequence(question.serial_subtraction, piaacScore)
 
     return {
-      person_id: person.id,
-      question_id: question.id,
-      run,
-      answer: result.scale_score,
-      valid: true,
-      strategy,
-      model: 'stochastic-piaac' as SupportedModel,
-      temperature: 0,
-      timestamp,
+      response: {
+        person_id: person.id,
+        question_id: question.id,
+        run,
+        answer: result.scale_score,
+        valid: true,
+        strategy,
+        model: 'stochastic-piaac' as SupportedModel,
+        temperature: 0,
+        timestamp,
+      },
+      log: stochasticLog('stochastic-piaac'),
     }
   }
 
@@ -205,15 +251,18 @@ async function callWithRefusalRetry(
     const result = generateStochasticAnswer(piaacScore, question, itemParams)
 
     return {
-      person_id: person.id,
-      question_id: question.id,
-      run,
-      answer: result.answer,
-      valid: true,
-      strategy,
-      model: 'stochastic-piaac' as SupportedModel,
-      temperature: 0,
-      timestamp,
+      response: {
+        person_id: person.id,
+        question_id: question.id,
+        run,
+        answer: result.answer,
+        valid: true,
+        strategy,
+        model: 'stochastic-piaac' as SupportedModel,
+        temperature: 0,
+        timestamp,
+      },
+      log: stochasticLog('stochastic-piaac'),
     }
   }
 
@@ -245,6 +294,21 @@ async function callWithRefusalRetry(
     }
   }
 
+  const buildLog = (rawResponse: string | null, latencyMs: number | null, tokens: PromptLog['tokens_used']): PromptLog => ({
+    person_id: person.id,
+    question_id: question.id,
+    run,
+    source: 'openai',
+    system_prompt: system,
+    user_prompt: user,
+    raw_response: rawResponse,
+    model,
+    temperature,
+    latency_ms: latencyMs,
+    tokens_used: tokens,
+    timestamp,
+  })
+
   for (let attempt = 0; attempt <= MAX_REFUSAL_RETRIES; attempt++) {
     const result = await openai.callModel({
       model, // validated as SupportedModel via SimulationChunkMessageSchema at deserialization
@@ -252,6 +316,12 @@ async function callWithRefusalRetry(
       userPrompt: user,
       temperature,
     })
+
+    const tokens = {
+      prompt: result.usage.input_tokens,
+      completion: result.usage.output_tokens,
+      total: result.usage.total_tokens,
+    }
 
     if (isRefusal(result.content)) {
       // Log question and run, but not person.id (avoid PII in Application Insights logs)
@@ -265,21 +335,20 @@ async function callWithRefusalRetry(
       }
       // Exhausted retries — mark as invalid
       return {
-        person_id: person.id,
-        question_id: question.id,
-        run,
-        answer: '',
-        valid: false,
-        invalid_reason: safeInvalidReason('Model odmítl odpovědět (refusal)'),
-        strategy,
-        model,
-        temperature,
-        timestamp,
-        tokens_used: {
-          prompt: result.usage.input_tokens,
-          completion: result.usage.output_tokens,
-          total: result.usage.total_tokens,
+        response: {
+          person_id: person.id,
+          question_id: question.id,
+          run,
+          answer: '',
+          valid: false,
+          invalid_reason: safeInvalidReason('Model odmítl odpovědět (refusal)'),
+          strategy,
+          model,
+          temperature,
+          timestamp,
+          tokens_used: tokens,
         },
+        log: buildLog(result.content, result.latency_ms, tokens),
       }
     }
 
@@ -296,32 +365,33 @@ async function callWithRefusalRetry(
       model,
       temperature,
       timestamp,
-      tokens_used: {
-        prompt: result.usage.input_tokens,
-        completion: result.usage.output_tokens,
-        total: result.usage.total_tokens,
-      },
+      tokens_used: tokens,
     }
+
+    const log = buildLog(result.content, result.latency_ms, tokens)
 
     if (!parsed.valid && parsed.invalid_reason !== undefined) {
-      return { ...baseResponse, invalid_reason: safeInvalidReason(parsed.invalid_reason) }
+      return { response: { ...baseResponse, invalid_reason: safeInvalidReason(parsed.invalid_reason) }, log }
     }
 
-    return baseResponse
+    return { response: baseResponse, log }
   }
 
   // Should never reach here
   return {
-    person_id: person.id,
-    question_id: question.id,
-    run,
-    answer: '',
-    valid: false,
-    invalid_reason: 'Nečekaná chyba při volání modelu',
-    strategy,
-    model,
-    temperature,
-    timestamp: new Date().toISOString(),
+    response: {
+      person_id: person.id,
+      question_id: question.id,
+      run,
+      answer: '',
+      valid: false,
+      invalid_reason: 'Nečekaná chyba při volání modelu',
+      strategy,
+      model,
+      temperature,
+      timestamp: new Date().toISOString(),
+    },
+    log: buildLog(null, null, null),
   }
 }
 

@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
-import { BarChart2, Download } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { BarChart2, Download, ChevronDown, ChevronRight } from 'lucide-react'
 import { SimulationStatus } from '@respondex/shared'
-import type { AnalyticsResult, FrequencyTable, CrossTab } from '@respondex/shared'
+import type { AnalyticsResult, FrequencyTable, CrossTab, PromptLog } from '@respondex/shared'
 import {
-  getSimulations, getAnalyticsSummary, getCrossTabs, exportAnalyticsXlsx,
+  getSimulations, getAnalyticsSummary, getCrossTabs, exportAnalyticsXlsx, getPromptLogs,
   type SimulationListItem,
 } from '../lib/api'
+import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -173,6 +174,158 @@ function RawDataTab({ analytics }: { analytics: AnalyticsResult }) {
   )
 }
 
+// ── Prompt logs tab ───────────────────────────────────────────────────────
+
+const PAGE_SIZE = 50
+
+function LogyTab({ simulationId }: { simulationId: string }) {
+  const [logs, setLogs] = useState<PromptLog[]>([])
+  const [page, setPage] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
+
+  const loadPage = useCallback(async (p: number) => {
+    setLoading(true)
+    try {
+      const result = await getPromptLogs(simulationId, p, PAGE_SIZE)
+      setLogs(result.logs)
+      setTotalPages(result.total_pages)
+      setTotal(result.total)
+      setPage(p)
+      setExpandedIdx(null)
+    } catch { /* non-critical */ }
+    finally { setLoading(false) }
+  }, [simulationId])
+
+  useEffect(() => { void loadPage(0) }, [loadPage])
+
+  const filtered = filter
+    ? logs.filter(l =>
+        l.person_id.includes(filter) ||
+        l.question_id.includes(filter)
+      )
+    : logs
+
+  if (!loading && total === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Tato simulace nemá uložené prompt logy. Logy jsou k dispozici pouze pro simulace spuštěné po aktivaci logování.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Input
+          placeholder="Filtr (person_id nebo question_id)…"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="max-w-xs text-xs"
+        />
+        <span className="text-xs text-muted-foreground">
+          Celkem {total} záznamů · strana {page + 1}/{totalPages}
+        </span>
+      </div>
+
+      {loading && <p className="text-sm text-muted-foreground">Načítám logy…</p>}
+
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="w-6 px-2 py-2"></th>
+                <th className="text-left px-3 py-2 font-medium">Person</th>
+                <th className="text-left px-3 py-2 font-medium">Otázka</th>
+                <th className="text-right px-3 py-2 font-medium">Run</th>
+                <th className="text-left px-3 py-2 font-medium">Zdroj</th>
+                <th className="text-left px-3 py-2 font-medium">Model</th>
+                <th className="text-right px-3 py-2 font-medium">Latence</th>
+                <th className="text-right px-3 py-2 font-medium">Tokeny</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((log, idx) => (
+                <React.Fragment key={`${log.person_id}-${log.question_id}-${log.run}-${idx}`}>
+                  <tr
+                    className="border-b hover:bg-muted/30 cursor-pointer"
+                    onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+                  >
+                    <td className="px-2 py-2 text-muted-foreground">
+                      {expandedIdx === idx
+                        ? <ChevronDown className="h-3 w-3" />
+                        : <ChevronRight className="h-3 w-3" />}
+                    </td>
+                    <td className="px-3 py-2 font-mono">{log.person_id.substring(0, 8)}…</td>
+                    <td className="px-3 py-2 font-mono">{log.question_id.substring(0, 8)}…</td>
+                    <td className="px-3 py-2 text-right">{log.run}</td>
+                    <td className="px-3 py-2">
+                      <Badge variant={log.source === 'openai' ? 'default' : 'secondary'}>
+                        {log.source}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2">{log.model}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {log.latency_ms != null ? `${log.latency_ms} ms` : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {log.tokens_used?.total ?? '—'}
+                    </td>
+                  </tr>
+                  {expandedIdx === idx && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-3 bg-muted/20 border-b">
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-1">System prompt</p>
+                            <pre className="text-xs whitespace-pre-wrap bg-background p-2 rounded border max-h-40 overflow-y-auto">
+                              {log.system_prompt ?? '(stochastic bypass — žádný prompt)'}
+                            </pre>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-1">User prompt</p>
+                            <pre className="text-xs whitespace-pre-wrap bg-background p-2 rounded border max-h-60 overflow-y-auto">
+                              {log.user_prompt ?? '(stochastic bypass — žádný prompt)'}
+                            </pre>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-1">Raw AI response</p>
+                            <pre className="text-xs whitespace-pre-wrap bg-background p-2 rounded border max-h-40 overflow-y-auto">
+                              {log.raw_response ?? '(stochastic bypass — žádná odpověď)'}
+                            </pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center gap-2 justify-center">
+          <Button size="sm" variant="outline" disabled={page === 0}
+                  onClick={() => void loadPage(page - 1)}>
+            Předchozí
+          </Button>
+          <span className="text-xs tabular-nums">{page + 1} / {totalPages}</span>
+          <Button size="sm" variant="outline" disabled={page >= totalPages - 1}
+                  onClick={() => void loadPage(page + 1)}>
+            Další
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export function VysledkyPage() {
@@ -285,6 +438,7 @@ export function VysledkyPage() {
             <TabsTrigger value="prehled">Přehled</TabsTrigger>
             <TabsTrigger value="crosstabs">Cross-tabs</TabsTrigger>
             <TabsTrigger value="rawdata">Raw data</TabsTrigger>
+            <TabsTrigger value="logy">Logy</TabsTrigger>
           </TabsList>
 
           {/* Přehled tab */}
@@ -345,6 +499,11 @@ export function VysledkyPage() {
             ) : loadingAnalytics ? (
               <p className="text-sm text-muted-foreground">Načítám…</p>
             ) : null}
+          </TabsContent>
+
+          {/* Logy tab */}
+          <TabsContent value="logy">
+            <LogyTab simulationId={selectedId} />
           </TabsContent>
         </Tabs>
       )}
