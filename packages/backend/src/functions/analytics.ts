@@ -213,6 +213,7 @@ async function exportXlsx(req: HttpRequest, ctx: InvocationContext): Promise<Htt
       simulationMeta: meta,
       responses,
       questions,
+      persons,
       frequencyTables: analytics.frequency_tables,
       descriptiveStats: analytics.descriptive_stats,
       crossTabs: analytics.cross_tabs,
