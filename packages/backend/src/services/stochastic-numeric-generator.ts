@@ -134,11 +134,6 @@ function weightedSample(attractors: ErrorAttractor[]): ErrorAttractor {
   return attractors[attractors.length - 1]!
 }
 
-/** Check if a number is "round" (exact integer divisible by 5 or 10) */
-function isRoundNumber(n: number): boolean {
-  return Number.isInteger(n) && (n % 5 === 0)
-}
-
 function generateAttractorAnswer(
   correctAnswer: number,
   question: Question,
@@ -165,12 +160,16 @@ function generateAttractorAnswer(
 
   const selected = weightedSample(applicable)
 
-  // Jitter: round numbers get minimal jitter (people answer "300" not "296")
-  // Non-round numbers get ±2% jitter for variety
-  const jitterScale = isRoundNumber(selected.value) ? 0.005 : 0.04
-  const jitter = 1 + (Math.random() - 0.5) * jitterScale
-  let answer = selected.value * jitter
-  answer = roundToReasonablePrecision(answer, correctAnswer)
+  // Integer attractors get zero jitter — they represent exact cognitive errors
+  // (e.g., "900" = complement, "300" = forgot discount). Real humans answer
+  // these exactly, not "901" or "296".
+  let answer: number
+  if (Number.isInteger(selected.value)) {
+    answer = selected.value
+  } else {
+    const jitter = 1 + (Math.random() - 0.5) * 0.04
+    answer = roundToReasonablePrecision(selected.value * jitter, correctAnswer)
+  }
 
   const scaleMin = question.scale_min ?? 0
   const scaleMax = question.scale_max ?? correctAnswer * 10
