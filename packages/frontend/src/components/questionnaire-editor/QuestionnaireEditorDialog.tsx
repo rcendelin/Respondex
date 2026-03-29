@@ -63,6 +63,7 @@ interface QuestionDraft {
   scale_max_label?: string | undefined
   is_numeric?: boolean | undefined
   correct_answer?: number | undefined
+  correct_rate?: number | undefined
   skip_logic?: SkipLogic | undefined
   piping_from?: string | undefined
 }
@@ -585,6 +586,7 @@ function QuestionEditorPanel({
                 onChange={(e) => onChange({
                   is_numeric: e.target.checked || undefined,
                   correct_answer: e.target.checked ? question.correct_answer : undefined,
+                  correct_rate: e.target.checked ? question.correct_rate : undefined,
                 })}
                 className="rounded"
               />
@@ -595,15 +597,38 @@ function QuestionEditorPanel({
               AI nebude použito — odpovědi budou statisticky kalibrovány.
             </p>
             {question.is_numeric && (
-              <div className="pl-6 pt-1">
-                <Label className="text-xs text-muted-foreground">Správná odpověď</Label>
-                <Input
-                  type="number"
-                  value={question.correct_answer ?? ''}
-                  onChange={(e) => onChange({ correct_answer: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  className="h-8 text-sm w-40 mt-0.5"
-                  placeholder="např. 600"
-                />
+              <div className="pl-6 pt-1 space-y-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Správná odpověď</Label>
+                  <Input
+                    type="number"
+                    value={question.correct_answer ?? ''}
+                    onChange={(e) => onChange({ correct_answer: e.target.value === '' ? undefined : Number(e.target.value) })}
+                    className="h-8 text-sm w-40 mt-0.5"
+                    placeholder="např. 600"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Podíl správných odpovědí v populaci (ČSÚ/PIAAC)</Label>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max="0.99"
+                      value={question.correct_rate ?? ''}
+                      onChange={(e) => onChange({ correct_rate: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      className="h-8 text-sm w-40"
+                      placeholder="např. 0.63"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {question.correct_rate != null ? `${Math.round(question.correct_rate * 100)} %` : 'neuvedeno — použije se heuristika'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Hodnota 0.01–0.99. Kalibruje obtížnost IRT modelu tak, aby populační průměr P(správně) odpovídal referenčním datům.
+                  </p>
+                </div>
               </div>
             )}
           </div>
