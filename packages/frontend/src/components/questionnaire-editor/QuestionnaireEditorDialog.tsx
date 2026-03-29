@@ -66,6 +66,7 @@ interface QuestionDraft {
   correct_rate?: number | undefined
   skip_logic?: SkipLogic | undefined
   piping_from?: string | undefined
+  reference_distribution?: Record<string, number> | undefined
 }
 
 // ── Czech labels & icons ────────────────────────────────────────────────────
@@ -290,6 +291,132 @@ function ScaleEditor({
 
 // ── Section wrapper ─────────────────────────────────────────────────────────
 
+// ── Reference Distribution Editor ─────────────────────────────────────────
+
+function getDefaultKeys(question: QuestionDraft): string[] {
+  if (question.type === QuestionType.YES_NO) return ['Ano', 'Ne']
+  if (question.options && question.options.length > 0) return question.options
+  if (question.type === QuestionType.LIKERT || question.type === QuestionType.NPS || question.type === QuestionType.SEMANTIC_DIFF) {
+    const min = question.scale_min ?? (question.type === QuestionType.NPS ? 0 : 1)
+    const max = question.scale_max ?? (question.type === QuestionType.NPS ? 10 : 5)
+    const keys: string[] = []
+    for (let i = min; i <= max; i++) keys.push(String(i))
+    return keys
+  }
+  return []
+}
+
+function ReferenceDistributionEditor({
+  question,
+  onChange,
+}: {
+  question: QuestionDraft
+  onChange: (patch: Partial<QuestionDraft>) => void
+}) {
+  const dist = question.reference_distribution ?? {}
+  const entries = Object.entries(dist)
+  const total = entries.reduce((s, [, v]) => s + v, 0)
+  const hasEntries = entries.length > 0
+
+  function updateDist(newDist: Record<string, number>) {
+    onChange({ reference_distribution: Object.keys(newDist).length > 0 ? newDist : undefined })
+  }
+
+  function setEntry(key: string, value: number) {
+    updateDist({ ...dist, [key]: value })
+  }
+
+  function removeEntry(key: string) {
+    const next = { ...dist }
+    delete next[key]
+    updateDist(next)
+  }
+
+  function addEntry() {
+    const existing = new Set(Object.keys(dist))
+    const defaultKeys = getDefaultKeys(question)
+    const nextKey = defaultKeys.find(k => !existing.has(k)) ?? `Hodnota ${entries.length + 1}`
+    updateDist({ ...dist, [nextKey]: 0 })
+  }
+
+  function prefillFromOptions() {
+    const keys = getDefaultKeys(question)
+    if (keys.length === 0) return
+    const even = Math.round((1 / keys.length) * 100) / 100
+    const newDist: Record<string, number> = {}
+    for (const k of keys) newDist[k] = dist[k] ?? even
+    updateDist(newDist)
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] text-muted-foreground">
+        Reálné rozložení odpovědí z průzkumu (ČSÚ, CVVM, ESS). Součet by měl být ~1.0.
+        Používá se pro kalibraci promptu (Layer 1) a post-hoc korekci distribuce (Layer 2).
+      </p>
+
+      {!hasEntries && (
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" className="text-xs h-7" onClick={prefillFromOptions}>
+            <Plus className="h-3 w-3 mr-1" />
+            Předvyplnit z možností
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="text-xs h-7" onClick={addEntry}>
+            <Plus className="h-3 w-3 mr-1" />
+            Přidat ručně
+          </Button>
+        </div>
+      )}
+
+      {hasEntries && (
+        <>
+          <div className="space-y-1">
+            {entries.map(([key, value]) => (
+              <div key={key} className="flex items-center gap-2">
+                <Input
+                  value={key}
+                  onChange={(e) => {
+                    const newKey = e.target.value
+                    if (newKey === key) return
+                    const next = { ...dist }
+                    delete next[key]
+                    next[newKey] = value
+                    updateDist(next)
+                  }}
+                  className="h-7 text-xs flex-1"
+                  placeholder="Odpověď"
+                />
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={value}
+                  onChange={(e) => setEntry(key, Number(e.target.value) || 0)}
+                  className="h-7 text-xs w-20 text-right"
+                />
+                <span className="text-[10px] text-muted-foreground w-10 text-right">{Math.round(value * 100)} %</span>
+                <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => removeEntry(key)}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <Button type="button" variant="outline" size="sm" className="text-xs h-7" onClick={addEntry}>
+              <Plus className="h-3 w-3 mr-1" />
+              Přidat
+            </Button>
+            <span className={`text-[10px] ${Math.abs(total - 1) < 0.02 ? 'text-muted-foreground' : 'text-destructive font-medium'}`}>
+              Součet: {(total * 100).toFixed(0)} %{Math.abs(total - 1) >= 0.02 && ' (měl by být ~100 %)'}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function EditorSection({
   icon: Icon,
   title,
@@ -345,6 +472,7 @@ function QuestionListItem({
 }) {
   const summary = questionSummary(question)
   const hasAdvanced = !!question.skip_logic || !!question.piping_from || !!question.is_numeric
+  const hasRefDist = !!question.reference_distribution && Object.keys(question.reference_distribution).length > 0
 
   return (
     <div
@@ -378,6 +506,9 @@ function QuestionListItem({
             )}
             {hasAdvanced && (
               <span title="Pokročilé nastavení"><Zap className="h-3 w-3 text-amber-500/60" /></span>
+            )}
+            {hasRefDist && (
+              <span title="Referenční distribuce"><BarChart2 className="h-3 w-3 text-blue-500/60" /></span>
             )}
             {hasErrors && (
               <AlertCircle className="h-3 w-3 text-destructive" />
@@ -632,6 +763,13 @@ function QuestionEditorPanel({
               </div>
             )}
           </div>
+        </EditorSection>
+      )}
+
+      {/* ── Section: Referenční distribuce ── */}
+      {question.type !== QuestionType.OPEN_TEXT && question.type !== QuestionType.MATRIX && question.type !== QuestionType.RANKING && (
+        <EditorSection icon={BarChart2} title="Referenční distribuce (ČSÚ/CVVM)" defaultOpen={!!question.reference_distribution && Object.keys(question.reference_distribution).length > 0}>
+          <ReferenceDistributionEditor question={question} onChange={onChange} />
         </EditorSection>
       )}
 
