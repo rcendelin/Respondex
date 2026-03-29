@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { Gender, Education, MaritalStatus, EmploymentStatus, IncomeLevel, Region } from '../types/person.js'
 
 export const DemographicsSchema = z.object({
+  nationality: z.string().max(100).optional(),
   education: z.nativeEnum(Education).optional(),
   marital_status: z.nativeEnum(MaritalStatus).optional(),
   has_partner: z.boolean().optional(),

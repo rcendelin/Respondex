@@ -15,7 +15,7 @@ function sanitizeForExcel(val: string): string {
 
 // Fixed column names used in export — custom fields must not collide with these
 const FIXED_COLUMN_NAMES = new Set([
-  'ID', 'Věk', 'Pohlaví', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj',
+  'ID', 'Věk', 'Pohlaví', 'Národnost', 'Vzdělání', 'Stav', 'Partner', 'Status', 'Příjem', 'Kraj',
   'PIAAC skóre', 'PIAAC úroveň', 'Životní příběh',
 ])
 
@@ -44,6 +44,7 @@ export function generatePopulationXlsx(persons: Person[], metadata?: Partial<Per
       'Věk': p.age,
       // Enum values are sanitized defensively (could come from non-parser sources)
       'Pohlaví': sanitizeForExcel(p.gender),
+      'Národnost': sanitizeForExcel(p.demographics?.nationality ?? 'ČR'),
       'Vzdělání': sanitizeForExcel(p.demographics?.education ?? ''),
       'Stav': sanitizeForExcel(p.demographics?.marital_status ?? ''),
       'Partner':
@@ -81,6 +82,7 @@ export function generatePopulationXlsx(persons: Person[], metadata?: Partial<Per
     { wch: 8 },  // ID
     { wch: 6 },  // Věk
     { wch: 8 },  // Pohlaví
+    { wch: 12 }, // Národnost
     { wch: 22 }, // Vzdělání
     { wch: 20 }, // Stav
     { wch: 8 },  // Partner

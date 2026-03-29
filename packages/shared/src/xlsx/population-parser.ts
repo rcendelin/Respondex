@@ -23,6 +23,7 @@ const KNOWN_COLUMNS: Record<string, FieldName> = {
   ID: 'id',
   'Věk': 'age',
   'Pohlaví': 'gender',
+  'Národnost': 'nationality',
   'Vzdělání': 'education',
   'Stav': 'marital_status',
   'Partner': 'has_partner',
@@ -40,6 +41,7 @@ const KNOWN_COLUMNS: Record<string, FieldName> = {
   ZaměstnaneckyStatus: 'employment_status', // legacy variant with diacritic
   PrijmoveRozpeti: 'income_level',
   ZivotniPribeh: 'life_story',
+  Narodnost: 'nationality',
 }
 
 
@@ -293,6 +295,12 @@ export function parsePopulationXlsx(buffer: Buffer | ArrayBuffer): ParseResult<P
     // double-write when both naming conventions appear in the same file.
     const demographics: Demographics = {}
     let hasDemographics = false
+
+    // --- Parse nationality (string, default 'ČR') ---
+    const nationalityCol = findColumnForField(headers, 'nationality')
+    const nationalityRaw = nationalityCol ? String(row[nationalityCol] ?? '').trim() : ''
+    demographics.nationality = nationalityRaw || 'ČR'
+    hasDemographics = true
 
     const optionalFields = [
       'education', 'marital_status', 'employment_status', 'income_level', 'region', 'has_partner',

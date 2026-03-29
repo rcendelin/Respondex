@@ -238,6 +238,8 @@ function buildPersonaBlock(person: Person): string {
     lines.push(`- Zaměstnanecký status: ${label(EMPLOYMENT_LABELS, person.demographics.employment_status)}`)
   if (person.demographics?.income_level)
     lines.push(`- Příjmové rozpětí: ${label(INCOME_LABELS, person.demographics.income_level)}`)
+  if (person.demographics?.nationality)
+    lines.push(`- Národnost: ${person.demographics.nationality}`)
   if (person.demographics?.region)
     lines.push(`- Kraj bydliště: ${person.demographics.region}`)
   if (person.demographics?.has_partner !== undefined)

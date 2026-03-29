@@ -61,6 +61,8 @@ export enum Region {
 }
 
 export interface Demographics {
+  /** Nationality / citizenship (default: 'ČR') */
+  nationality?: string
   education?: Education
   marital_status?: MaritalStatus
   has_partner?: boolean
