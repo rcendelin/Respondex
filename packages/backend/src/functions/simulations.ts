@@ -371,6 +371,130 @@ async function forceCompleteSimulation(req: HttpRequest, ctx: InvocationContext)
   }
 }
 
+// ── POST /api/simulations/{id}/regenerate ────────────────────────────────
+async function regenerateMissing(req: HttpRequest, ctx: InvocationContext): Promise<HttpResponseInit> {
+  try {
+    const id = requireUUID(req.params['id'])
+    const svc = storage()
+
+    const metaPath = `data/simulations/${id}/meta.json`
+    const metaExists = await svc.blobExists(metaPath)
+    if (!metaExists) throw new NotFoundError('Simulace nebyla nalezena')
+
+    const meta = await svc.readJson<SimulationMeta>(metaPath)
+    if (meta.status === SimulationStatus.RUNNING) {
+      throw new ValidationError('Simulace stále běží — počkejte na dokončení nebo ji force-complete')
+    }
+
+    const config = meta.config
+
+    // Load persons and questions
+    const [persons, questions] = await Promise.all([
+      svc.readJson<Person[]>(`data/populations/${config.population_id}/persons.json`),
+      svc.readJson<unknown[]>(`data/questionnaires/${config.questionnaire_id}/questions.json`),
+    ])
+
+    // Load existing responses
+    const blobs = await svc.listBlobs(`data/simulations/${id}/responses/`)
+    const chunkBlobs = blobs.filter((b) => b.includes('/responses/chunk-') && b.endsWith('.json'))
+    const chunkArrays = await Promise.all(
+      chunkBlobs.map((path) =>
+        svc.readJson<SimulationResponse[]>(path).catch(() => [] as SimulationResponse[])
+      )
+    )
+    const existingResponses = chunkArrays.flat()
+
+    // Build set of existing person×question×run keys
+    const existingKeys = new Set(
+      existingResponses.map((r) => `${r.person_id}|${r.question_id}|${r.run}`)
+    )
+
+    // Find persons with missing responses
+    const missingPersonIds = new Set<string>()
+    for (const person of persons) {
+      for (const q of questions as { id: string }[]) {
+        for (let run = 1; run <= config.runs_per_person; run++) {
+          if (!existingKeys.has(`${person.id}|${q.id}|${run}`)) {
+            missingPersonIds.add(person.id)
+          }
+        }
+      }
+    }
+
+    if (missingPersonIds.size === 0) {
+      // No missing responses — mark as completed
+      const updatedMeta: SimulationMeta = {
+        ...meta,
+        status: SimulationStatus.COMPLETED,
+        completed_at: meta.completed_at ?? new Date().toISOString(),
+      }
+      await svc.writeJson(metaPath, updatedMeta)
+      return {
+        status: 200,
+        jsonBody: { simulation_id: id, message: 'Žádné chybějící odpovědi — simulace je kompletní', missing_persons: 0 },
+      }
+    }
+
+    // Split missing persons into chunks
+    const missingIds = [...missingPersonIds]
+    const chunks: string[][] = []
+    for (let i = 0; i < missingIds.length; i += CHUNK_SIZE) {
+      chunks.push(missingIds.slice(i, i + CHUNK_SIZE))
+    }
+
+    // Use chunk numbers continuing from existing (e.g., regen-001, regen-002)
+    const queueSvc = queueClient()
+    const queueRef = queueSvc.getQueueClient(QUEUE_NAME)
+    await queueRef.createIfNotExists()
+
+    const newTotalChunks = meta.total_chunks + chunks.length
+
+    // Update meta: back to RUNNING with new total
+    const updatedMeta: SimulationMeta = {
+      id: meta.id,
+      config: meta.config,
+      status: SimulationStatus.RUNNING,
+      total_chunks: newTotalChunks,
+      completed_chunks: meta.completed_chunks,
+      started_at: meta.started_at,
+    }
+    await svc.writeJson(metaPath, updatedMeta)
+
+    // Enqueue regeneration chunks
+    await Promise.all(
+      chunks.map((chunkPersonIds, i) => {
+        const chunkNumber = `regen-${String(i + 1).padStart(3, '0')}`
+        const msg: SimulationChunkMessage = {
+          simulation_id: id,
+          chunk_index: meta.total_chunks + i,
+          chunk_number: chunkNumber,
+          person_ids: chunkPersonIds,
+          config,
+        }
+        return queueRef.sendMessage(encodeMessage(msg))
+      })
+    )
+
+    ctx.log(
+      `Simulation ${id} regenerate: ${missingPersonIds.size} persons missing, ${chunks.length} chunks enqueued`
+    )
+
+    return {
+      status: 202,
+      jsonBody: {
+        simulation_id: id,
+        status: SimulationStatus.RUNNING,
+        missing_persons: missingPersonIds.size,
+        new_chunks: chunks.length,
+        total_chunks: newTotalChunks,
+        message: `Dogenerování spuštěno: ${missingPersonIds.size} osob, ${chunks.length} chunků`,
+      },
+    }
+  } catch (err) {
+    return errorResponse(err, ctx)
+  }
+}
+
 // ── Route registrations ────────────────────────────────────────────────────
 app.http('createSimulation', {
   methods: ['POST'],
@@ -419,4 +543,11 @@ app.http('forceCompleteSimulation', {
   authLevel: 'anonymous',
   route: 'simulations/{id}/force-complete',
   handler: forceCompleteSimulation,
+})
+
+app.http('regenerateMissing', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'simulations/{id}/regenerate',
+  handler: regenerateMissing,
 })

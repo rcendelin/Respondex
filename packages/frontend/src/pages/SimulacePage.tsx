@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { PlayCircle, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import { PlayCircle, Plus, Trash2, CheckCircle2, RefreshCw } from 'lucide-react'
 import { Strategy, SimulationStatus, SupportedModel, VarianceMode } from '@respondex/shared'
 import {
   getPopulations, getQuestionnaires, getSimulations, startSimulation,
-  deleteSimulation, forceCompleteSimulation, getSimulationStatus,
+  deleteSimulation, forceCompleteSimulation, regenerateMissing, getSimulationStatus,
   type PopulationListItem, type QuestionnaireListItem, type SimulationListItem,
 } from '../lib/api'
 import { Button } from '../components/ui/button'
@@ -286,6 +286,7 @@ export function SimulacePage() {
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [forcingId, setForcingId] = useState<string | null>(null)
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
@@ -339,6 +340,13 @@ export function SimulacePage() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
   }, [simulations])
+
+  async function handleRegenerate(id: string) {
+    setRegeneratingId(id)
+    try { await regenerateMissing(id); void load() }
+    catch { /* non-critical */ }
+    finally { setRegeneratingId(null) }
+  }
 
   async function handleForceComplete(id: string) {
     setForcingId(id)
@@ -411,6 +419,13 @@ export function SimulacePage() {
                           disabled={forcingId === sim.id}
                           onClick={() => handleForceComplete(sim.id)}>
                           <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {(sim.status === SimulationStatus.PARTIAL_FAILURE || sim.status === SimulationStatus.COMPLETED) && (
+                        <Button variant="ghost" size="icon" title="Dogenerovat chybějící odpovědi"
+                          disabled={regeneratingId === sim.id}
+                          onClick={() => handleRegenerate(sim.id)}>
+                          <RefreshCw className="h-4 w-4" />
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" title="Smazat simulaci"
