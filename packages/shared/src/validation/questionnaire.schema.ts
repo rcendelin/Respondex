@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { QuestionType } from '../types/questionnaire.js'
 
+export const SerialSubtractionSchema = z.object({
+  start: z.number().int().min(1),
+  step: z.number().int().min(1),
+  count: z.number().int().min(1).max(20),
+})
+
 export const SkipLogicSchema = z.object({
   question_id: z.string().min(1),
   show_if_answer: z.string().min(1),
@@ -39,6 +45,7 @@ export const QuestionSchema = z
     correct_answer: z.number().optional(),
     correct_rate: z.number().min(0.01).max(0.99).optional(),
     error_attractors: z.array(ErrorAttractorSchema).max(20).optional(),
+    serial_subtraction: SerialSubtractionSchema.optional(),
     skip_logic: SkipLogicSchema.optional(),
     piping_from: z.string().max(50).optional(),
   })

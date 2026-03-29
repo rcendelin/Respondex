@@ -14,7 +14,7 @@ import type {
   SimulationResponse,
   SupportedModel,
 } from '@respondex/shared'
-import { SimulationStatus, Strategy, VarianceMode, assignNumeracyProfile } from '@respondex/shared'
+import { SimulationStatus, Strategy, VarianceMode, assignNumeracyProfile, generateStochasticSequence } from '@respondex/shared'
 import { parseChunkMessage } from '../lib/queue.js'
 
 /** Max OpenAI call retries for refusals */
@@ -179,6 +179,24 @@ async function callWithRefusalRetry(
   ctx: InvocationContext
 ): Promise<SimulationResponse> {
   const timestamp = new Date().toISOString()
+
+  // Serial subtraction bypass: generate sequence + score computationally
+  if (question.serial_subtraction) {
+    const piaacScore = person.demographics?.piaac_score ?? 267
+    const result = generateStochasticSequence(question.serial_subtraction, piaacScore)
+
+    return {
+      person_id: person.id,
+      question_id: question.id,
+      run,
+      answer: result.scale_score,
+      valid: true,
+      strategy,
+      model: 'stochastic-piaac' as SupportedModel,
+      temperature: 0,
+      timestamp,
+    }
+  }
 
   // Stochastic bypass: numeric questions with correct answers skip LLM entirely
   if (question.is_numeric && question.correct_answer != null) {

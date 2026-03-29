@@ -1,4 +1,4 @@
-import { QuestionType } from '@respondex/shared'
+import { QuestionType, scoreSerialSubtraction } from '@respondex/shared'
 import type { Question } from '@respondex/shared'
 
 export type ParsedAnswer = string | number | string[]
@@ -165,6 +165,18 @@ function validateAnswer(parsed: unknown, question: Question): ParsedResponse {
 export function parseModelResponse(raw: string, question: Question): ParsedResponse {
   if (!raw || raw.trim() === '') {
     return invalidResponse('Prázdná odpověď', raw)
+  }
+
+  // Serial subtraction: parse text sequence → score 1–5
+  if (question.serial_subtraction) {
+    const parsed = extractJson(raw)
+    if (parsed === null) {
+      return invalidResponse('Odpověď není platný JSON', raw)
+    }
+    const answer = (parsed as { answer?: unknown }).answer
+    const text = typeof answer === 'string' ? answer : String(answer ?? raw)
+    const result = scoreSerialSubtraction(text, question.serial_subtraction)
+    return { answer: result.scale_score, valid: true }
   }
 
   const parsed = extractJson(raw)

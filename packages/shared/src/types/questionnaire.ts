@@ -27,6 +27,16 @@ export interface ErrorAttractor {
   weight?: number
 }
 
+/** Serial subtraction config (e.g., Serial 7s from MMSE cognitive screening) */
+export interface SerialSubtraction {
+  /** Starting number (e.g., 100) */
+  start: number
+  /** Subtraction step (e.g., 7) */
+  step: number
+  /** Number of subtractions (e.g., 5) */
+  count: number
+}
+
 export interface SkipLogic {
   /** Question ID that controls this skip, e.g. "Q02" */
   question_id: string
@@ -68,6 +78,8 @@ export interface Question {
   correct_rate?: number
   /** Manual override: specific wrong answers that incorrect respondents gravitate toward */
   error_attractors?: ErrorAttractor[]
+  /** Serial subtraction config — enables automatic sequence generation and scoring */
+  serial_subtraction?: SerialSubtraction
   /** Conditional display logic */
   skip_logic?: SkipLogic
   /** Question ID whose answer should be piped into this question text as {Q_ID} */
