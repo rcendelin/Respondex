@@ -30,14 +30,14 @@ export interface ReferenceQuestion {
   scale_min?: number
   scale_max?: number
   /** Source survey */
-  source: 'ESS' | 'CVVM' | 'Eurobarometr' | 'PIAAC' | 'synthetic'
+  source: 'ESS' | 'CVVM' | 'ČSÚ' | 'Eurobarometr' | 'PIAAC' | 'synthetic'
   source_round?: string
   source_variable?: string
   /** Known Czech population distribution */
   reference_distribution: ReferenceDistribution
   /** Known distributions by demographic subgroup */
   subgroup_distributions?: Record<string, ReferenceDistribution>
-  domain: 'political' | 'economic' | 'social' | 'cognitive' | 'health' | 'cultural'
+  domain: 'political' | 'economic' | 'social' | 'cognitive' | 'health' | 'cultural' | 'media'
   has_correct_answer: boolean
 }
 

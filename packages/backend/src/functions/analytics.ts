@@ -30,6 +30,14 @@ async function loadAllResponses(
   simulationId: string,
   ctx: InvocationContext
 ): Promise<SimulationResponse[]> {
+  // Prefer calibrated responses (post-hoc DLCE + reference distribution correction)
+  const calibratedPath = `data/simulations/${simulationId}/calibrated/responses.json`
+  if (await svc.blobExists(calibratedPath)) {
+    ctx.log(`Analytics: using calibrated responses for simulation ${simulationId}`)
+    return svc.readJson<SimulationResponse[]>(calibratedPath)
+  }
+
+  // Fallback: load raw chunk responses
   const blobs = await svc.listBlobs(`data/simulations/${simulationId}/responses/`)
   const chunkBlobs = blobs
     .filter((b) => b.includes('/responses/chunk-') && b.endsWith('.json'))

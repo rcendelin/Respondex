@@ -97,6 +97,100 @@ export const REFERENCE_QUESTIONS: ReferenceQuestion[] = [
     has_correct_answer: false,
   },
 
+  // ── ČSÚ: Voter turnout (parliamentary elections) ───────────────────────
+  // Source: ČSÚ — Volby do Poslanecké sněmovny 2021, volby.cz
+  {
+    id: 'REF-CSU-TURNOUT-PARL',
+    text: 'Zúčastnil/a jste se posledních voleb do Poslanecké sněmovny Parlamentu České republiky?',
+    type: 'yes_no' as any,
+    source: 'ČSÚ',
+    source_round: 'Volby PS 2021',
+    source_variable: 'ucast_volby_ps',
+    reference_distribution: {
+      // ČSÚ: účast 65,43 % oprávněných voličů (volby PS 2021)
+      frequencies: { 'Ano': 0.65, 'Ne': 0.35 },
+      n: 8_248_000,
+      year: 2021,
+    },
+    domain: 'political',
+    has_correct_answer: false,
+  },
+
+  // ── CVVM: Interest in politics ────────────────────────────────────────
+  // Source: CVVM podzim 2024, Zájem o politiku
+  {
+    id: 'REF-CVVM-POLINTEREST',
+    text: 'Jak byste popsal/a svůj zájem o politiku?',
+    type: 'single_choice' as any,
+    options: ['Velmi se zajímám', 'Spíše se zajímám', 'Spíše se nezajímám', 'Vůbec se nezajímám'],
+    source: 'CVVM',
+    source_round: 'Podzim 2024',
+    source_variable: 'zajem_politika',
+    reference_distribution: {
+      // CVVM: ~8% velmi, ~35% spíše ano, ~38% spíše ne, ~19% vůbec
+      frequencies: {
+        'Velmi se zajímám': 0.08,
+        'Spíše se zajímám': 0.35,
+        'Spíše se nezajímám': 0.38,
+        'Vůbec se nezajímám': 0.19,
+      },
+      n: 1024,
+      year: 2024,
+    },
+    domain: 'political',
+    has_correct_answer: false,
+  },
+
+  // ── CVVM: Daily news consumption ──────────────────────────────────────
+  // Source: CVVM 2024, Mediální chování
+  {
+    id: 'REF-CVVM-NEWSCONSUMPTION',
+    text: 'Kolik času během běžného dne věnujete sledování, čtení nebo poslechu zpráv o politice a veřejném dění?',
+    type: 'single_choice' as any,
+    options: ['Do 30 minut', '30 - 60 minut', '1 - 2 hodiny', 'Více než 2 hodiny'],
+    source: 'CVVM',
+    source_round: '2024',
+    source_variable: 'cas_zpravy',
+    reference_distribution: {
+      // CVVM: většina 30–60 min, ~35% do 30 min, menšina 1h+
+      frequencies: {
+        'Do 30 minut': 0.35,
+        '30 - 60 minut': 0.42,
+        '1 - 2 hodiny': 0.18,
+        'Více než 2 hodiny': 0.05,
+      },
+      n: 1024,
+      year: 2024,
+    },
+    domain: 'media',
+    has_correct_answer: false,
+  },
+
+  // ── CVVM: Internet usage for information ──────────────────────────────
+  // Source: ČSÚ/CVVM 2024, Využívání ICT
+  {
+    id: 'REF-CSU-INTERNET-INFO',
+    text: 'Jak často používáte internet jako zdroj informací pro práci nebo osobní účely?',
+    type: 'single_choice' as any,
+    options: ['Denně nebo téměř denně', 'Několikrát týdně', 'Několikrát měsíčně', 'Méně často nebo vůbec'],
+    source: 'ČSÚ',
+    source_round: '2024',
+    source_variable: 'internet_info',
+    reference_distribution: {
+      // ČSÚ: ~72% denně, ~15% několikrát týdně, ~8% měsíčně, ~5% méně
+      frequencies: {
+        'Denně nebo téměř denně': 0.72,
+        'Několikrát týdně': 0.15,
+        'Několikrát měsíčně': 0.08,
+        'Méně často nebo vůbec': 0.05,
+      },
+      n: 5057,
+      year: 2024,
+    },
+    domain: 'media',
+    has_correct_answer: false,
+  },
+
   // ── CVVM: Political satisfaction (single choice) ───────────────────────
   {
     id: 'REF-CVVM-POLSAT',

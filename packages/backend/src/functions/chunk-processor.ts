@@ -435,6 +435,13 @@ async function incrementCompletedChunks(
         const correctedCount = corrected.corrections.reduce((s, c) => s + c.responses_corrected, 0)
         ctx.log(`Simulation ${simulationId}: distribution correction complete — ${correctedCount} responses adjusted`)
       }
+
+      // Invalidate analytics cache so next request recomputes from calibrated data
+      const analyticsCachePath = `data/simulations/${simulationId}/analytics.json`
+      if (await svc.blobExists(analyticsCachePath)) {
+        await svc.deleteBlob(analyticsCachePath)
+        ctx.log(`Simulation ${simulationId}: analytics cache invalidated after calibration`)
+      }
     } catch (err) {
       ctx.error(`Distribution correction failed for ${simulationId}: ${err instanceof Error ? err.message : 'unknown'}`)
     }
