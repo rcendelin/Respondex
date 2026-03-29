@@ -4,7 +4,7 @@ import { OpenAIService } from '../services/openai.js'
 import { buildPrompt, isRefusal, REFUSAL_FALLBACK, buildCompetenceProbe, extractCompetenceHint, isNumericQuestion } from '../services/prompt-builder.js'
 import { estimateQuestionDifficulty, numeracyToTheta, computeCompetenceProbability, generateIRTHint } from '../services/irt-engine.js'
 import { generateStochasticAnswer } from '../services/stochastic-numeric-generator.js'
-import { expandVariance, checkCoherence, buildCalibrationReport } from '../services/calibration.js'
+import { expandVariance, checkCoherence, buildCalibrationReport, applyReferenceDistributionCorrection } from '../services/calibration.js'
 import { parseModelResponse } from '../services/response-parser.js'
 import type {
   Person,
@@ -405,6 +405,38 @@ async function incrementCompletedChunks(
         ctx.error(`DLCE calibration failed for ${simulationId}: ${err instanceof Error ? err.message : 'unknown'}`)
         // Non-fatal: raw results are still available
       }
+    }
+
+    // Reference distribution correction: run when any question has reference_distribution
+    // Runs after DLCE (if active) or on raw responses otherwise
+    try {
+      const refQuestions = await svc.readJson<import('@respondex/shared').Question[]>(
+        `data/questionnaires/${currentMeta.config.questionnaire_id}/questions.json`
+      )
+      const hasRefDist = refQuestions.some(q => q.reference_distribution && Object.keys(q.reference_distribution).length > 0)
+      if (hasRefDist) {
+        ctx.log(`Simulation ${simulationId}: starting reference distribution correction...`)
+        // Use DLCE-calibrated responses if available, otherwise load raw
+        const calibratedPath = `data/simulations/${simulationId}/calibrated/responses.json`
+        let baseResponses: import('@respondex/shared').SimulationResponse[]
+        if (await svc.blobExists(calibratedPath)) {
+          baseResponses = await svc.readJson<import('@respondex/shared').SimulationResponse[]>(calibratedPath)
+        } else {
+          const chunkBlobs2 = await svc.listBlobs(`data/simulations/${simulationId}/responses/`)
+          baseResponses = []
+          for (const blobPath of chunkBlobs2) {
+            const chunk = await svc.readJson<import('@respondex/shared').SimulationResponse[]>(blobPath)
+            baseResponses.push(...chunk)
+          }
+        }
+        const corrected = applyReferenceDistributionCorrection(baseResponses, refQuestions)
+        await svc.writeJson(`data/simulations/${simulationId}/calibrated/responses.json`, corrected.responses)
+        await svc.writeJson(`data/simulations/${simulationId}/calibrated/distribution-correction-report.json`, corrected.corrections)
+        const correctedCount = corrected.corrections.reduce((s, c) => s + c.responses_corrected, 0)
+        ctx.log(`Simulation ${simulationId}: distribution correction complete — ${correctedCount} responses adjusted`)
+      }
+    } catch (err) {
+      ctx.error(`Distribution correction failed for ${simulationId}: ${err instanceof Error ? err.message : 'unknown'}`)
     }
   } else {
     ctx.log(

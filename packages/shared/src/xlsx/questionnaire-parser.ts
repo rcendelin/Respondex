@@ -177,6 +177,21 @@ export function parseQuestionnaireXlsx(
     const spravnostCsuRaw = String(row['SpravnostCSU'] ?? row['CorrectRate'] ?? '').trim()
     const correct_rate = spravnostCsuRaw ? Number(spravnostCsuRaw) : undefined
 
+    // Parse reference distribution (format: "Ano:0.60;Ne:0.40")
+    const refDistRaw = String(row['RefDistribuce'] ?? row['ReferenceDistribution'] ?? '').trim()
+    let reference_distribution: Record<string, number> | undefined
+    if (refDistRaw) {
+      const dist: Record<string, number> = {}
+      for (const pair of refDistRaw.split(';').map(p => p.trim()).filter(Boolean)) {
+        const colonIdx = pair.lastIndexOf(':')
+        if (colonIdx === -1) continue
+        const key = pair.substring(0, colonIdx).trim()
+        const val = Number(pair.substring(colonIdx + 1).trim())
+        if (key && !isNaN(val) && val >= 0 && val <= 1) dist[key] = val
+      }
+      if (Object.keys(dist).length > 0) reference_distribution = dist
+    }
+
     const question: Question = {
       id,
       order: Math.round(orderRaw),
@@ -193,6 +208,7 @@ export function parseQuestionnaireXlsx(
       ...(correct_rate !== undefined && !isNaN(correct_rate) && correct_rate > 0 && correct_rate < 1 ? { correct_rate } : {}),
       ...(skip_logic ? { skip_logic } : {}),
       ...(pipingFrom ? { piping_from: pipingFrom } : {}),
+      ...(reference_distribution ? { reference_distribution } : {}),
     }
 
     // Zod validation (validates cross-field rules)

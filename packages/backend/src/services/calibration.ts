@@ -321,3 +321,142 @@ function sd(values: number[]): number {
   const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1)
   return Math.sqrt(variance)
 }
+
+// ── Reference Distribution Correction (Layer 2) ─────────────────────────
+
+export interface DistributionCorrectionSummary {
+  question_id: string
+  has_reference: boolean
+  responses_corrected: number
+  original_distribution: Record<string, number>
+  target_distribution: Record<string, number>
+  final_distribution: Record<string, number>
+}
+
+export interface DistributionCorrectionResult {
+  responses: CalibratedResponse[]
+  corrections: DistributionCorrectionSummary[]
+}
+
+/**
+ * Adjust response distributions to match reference_distribution on each question.
+ * Randomly reassigns over-represented answers to under-represented ones.
+ * Preserves total response count per question.
+ */
+export function applyReferenceDistributionCorrection(
+  responses: SimulationResponse[],
+  questions: Question[],
+): DistributionCorrectionResult {
+  const questionMap = new Map(questions.map(q => [q.id, q]))
+  const calibrated: CalibratedResponse[] = responses.map(r => ({
+    ...r,
+    calibrated_answer: (r as CalibratedResponse).calibrated_answer ?? r.answer,
+    weight: (r as CalibratedResponse).weight ?? 1.0,
+  }))
+
+  const corrections: DistributionCorrectionSummary[] = []
+
+  for (const question of questions) {
+    if (!question.reference_distribution || Object.keys(question.reference_distribution).length === 0) {
+      corrections.push({
+        question_id: question.id,
+        has_reference: false,
+        responses_corrected: 0,
+        original_distribution: {},
+        target_distribution: {},
+        final_distribution: {},
+      })
+      continue
+    }
+
+    const refDist = question.reference_distribution
+    const qResponses = calibrated.filter(r => r.question_id === question.id && r.valid)
+    const N = qResponses.length
+    if (N === 0) continue
+
+    // Count current distribution
+    const currentCounts: Record<string, number> = {}
+    for (const r of qResponses) {
+      const key = String(r.calibrated_answer)
+      currentCounts[key] = (currentCounts[key] ?? 0) + 1
+    }
+
+    // Compute original proportions
+    const originalDist: Record<string, number> = {}
+    for (const [k, v] of Object.entries(currentCounts)) {
+      originalDist[k] = Math.round((v / N) * 1000) / 1000
+    }
+
+    // Compute target counts
+    const targetCounts: Record<string, number> = {}
+    let assigned = 0
+    const sortedEntries = Object.entries(refDist).sort((a, b) => b[1] - a[1])
+    for (let i = 0; i < sortedEntries.length; i++) {
+      const [key, proportion] = sortedEntries[i]!
+      if (i === sortedEntries.length - 1) {
+        targetCounts[key] = N - assigned // remainder to avoid rounding drift
+      } else {
+        targetCounts[key] = Math.round(proportion * N)
+        assigned += targetCounts[key]
+      }
+    }
+
+    // Find over-represented and under-represented categories
+    const overRepresented: { key: string; excess: number }[] = []
+    const underRepresented: { key: string; deficit: number }[] = []
+
+    for (const [key, target] of Object.entries(targetCounts)) {
+      const current = currentCounts[key] ?? 0
+      if (current > target) {
+        overRepresented.push({ key, excess: current - target })
+      } else if (current < target) {
+        underRepresented.push({ key, deficit: target - current })
+      }
+    }
+
+    // Reassign: pick responses from over-represented, change to under-represented
+    let correctedCount = 0
+    const shuffledQResponses = [...qResponses].sort(() => Math.random() - 0.5)
+
+    for (const over of overRepresented) {
+      let remaining = over.excess
+      for (const r of shuffledQResponses) {
+        if (remaining <= 0) break
+        if (String(r.calibrated_answer) !== over.key) continue
+
+        // Find an under-represented category that still needs responses
+        const target = underRepresented.find(u => u.deficit > 0)
+        if (!target) break
+
+        // Reassign this response
+        r.calibrated_answer = isNaN(Number(target.key)) ? target.key : Number(target.key)
+        r.weight = refDist[target.key]! / (originalDist[over.key] || 0.01)
+        target.deficit--
+        remaining--
+        correctedCount++
+      }
+    }
+
+    // Compute final distribution
+    const finalCounts: Record<string, number> = {}
+    for (const r of qResponses) {
+      const key = String(r.calibrated_answer)
+      finalCounts[key] = (finalCounts[key] ?? 0) + 1
+    }
+    const finalDist: Record<string, number> = {}
+    for (const [k, v] of Object.entries(finalCounts)) {
+      finalDist[k] = Math.round((v / N) * 1000) / 1000
+    }
+
+    corrections.push({
+      question_id: question.id,
+      has_reference: true,
+      responses_corrected: correctedCount,
+      original_distribution: originalDist,
+      target_distribution: refDist,
+      final_distribution: finalDist,
+    })
+  }
+
+  return { responses: calibrated, corrections }
+}

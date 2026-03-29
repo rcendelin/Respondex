@@ -46,6 +46,7 @@ export const QuestionSchema = z
     correct_rate: z.number().min(0.01).max(0.99).optional(),
     error_attractors: z.array(ErrorAttractorSchema).max(20).optional(),
     serial_subtraction: SerialSubtractionSchema.optional(),
+    reference_distribution: z.record(z.string(), z.number().min(0).max(1)).optional(),
     skip_logic: SkipLogicSchema.optional(),
     piping_from: z.string().max(50).optional(),
   })

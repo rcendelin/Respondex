@@ -297,7 +297,32 @@ export function buildPrompt(
     userMessage = `${fullPersonaBlock}\n\nOdpověz na následující otázku jako tento respondent:\n${formatInstr}`
   }
 
+  // Layer: inject reference distribution hint (nudging toward realistic proportions)
+  const refDistHint = buildReferenceDistributionHint(question)
+  if (refDistHint) {
+    userMessage = `${userMessage}\n\n${refDistHint}`
+  }
+
   return { system: SYSTEM_PROMPT, user: userMessage }
+}
+
+// ── Reference distribution hint (Layer 1 calibration) ────────────────────
+function buildReferenceDistributionHint(question: Question): string | null {
+  if (!question.reference_distribution) return null
+  const entries = Object.entries(question.reference_distribution)
+  if (entries.length === 0) return null
+
+  const lines: string[] = [
+    'REFERENČNÍ DATA Z REÁLNÉHO PRŮZKUMU (orientační):',
+    'V české populaci na tuto otázku odpovídají přibližně takto:',
+  ]
+  for (const [key, proportion] of entries) {
+    lines.push(`  - "${key}": ${Math.round(proportion * 100)} %`)
+  }
+  lines.push('')
+  lines.push('Tyto údaje jsou orientační. Odpověz podle profilu TOHOTO KONKRÉTNÍHO respondenta — nenapodobuj průměr, ale zvažuj, do které skupiny tento člověk pravděpodobně patří.')
+
+  return lines.join('\n')
 }
 
 // ── P12: Competence probe for two-step mode (Layer 3) ────────────────────

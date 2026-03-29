@@ -80,6 +80,11 @@ export interface Question {
   error_attractors?: ErrorAttractor[]
   /** Serial subtraction config — enables automatic sequence generation and scoring */
   serial_subtraction?: SerialSubtraction
+  /** Target response distribution from real survey data (ČSÚ, CVVM, ESS).
+   *  Keys are answer values, values are proportions (0.0–1.0) summing to ~1.0.
+   *  Layer 1: injected into prompt as reference context.
+   *  Layer 2: post-hoc correction adjusts simulated distribution to match. */
+  reference_distribution?: Record<string, number>
   /** Conditional display logic */
   skip_logic?: SkipLogic
   /** Question ID whose answer should be piped into this question text as {Q_ID} */
