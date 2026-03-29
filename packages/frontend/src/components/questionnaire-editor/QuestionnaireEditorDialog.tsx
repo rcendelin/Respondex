@@ -64,6 +64,8 @@ interface QuestionDraft {
   is_numeric?: boolean | undefined
   correct_answer?: number | undefined
   correct_rate?: number | undefined
+  /** Serial subtraction config (e.g., 100 − 7 × 5). Mutually exclusive with is_numeric. */
+  serial_subtraction?: { start: number; step: number; count: number } | undefined
   skip_logic?: SkipLogic | undefined
   piping_from?: string | undefined
   reference_distribution?: Record<string, number> | undefined
@@ -471,7 +473,7 @@ function QuestionListItem({
   onDuplicate: () => void
 }) {
   const summary = questionSummary(question)
-  const hasAdvanced = !!question.skip_logic || !!question.piping_from || !!question.is_numeric
+  const hasAdvanced = !!question.skip_logic || !!question.piping_from || !!question.is_numeric || !!question.serial_subtraction
   const hasRefDist = !!question.reference_distribution && Object.keys(question.reference_distribution).length > 0
 
   return (
@@ -708,60 +710,156 @@ function QuestionEditorPanel({
 
       {/* ── Section: Stochastický bypass (only for NUMBER) ── */}
       {question.type === QuestionType.NUMBER && (
-        <EditorSection icon={Calculator} title="PIAAC numerický bypass" defaultOpen={question.is_numeric ?? false}>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={question.is_numeric ?? false}
-                onChange={(e) => onChange({
-                  is_numeric: e.target.checked || undefined,
-                  correct_answer: e.target.checked ? question.correct_answer : undefined,
-                  correct_rate: e.target.checked ? question.correct_rate : undefined,
-                })}
-                className="rounded"
-              />
-              <span>Faktická otázka se správnou odpovědí</span>
-            </label>
-            <p className="text-[11px] text-muted-foreground leading-relaxed pl-6">
-              Zapne stochastický generátor odpovědí na základě PIAAC skóre respondenta.
-              AI nebude použito — odpovědi budou statisticky kalibrovány.
-            </p>
-            {question.is_numeric && (
-              <div className="pl-6 pt-1 space-y-2">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Správná odpověď</Label>
-                  <Input
-                    type="number"
-                    value={question.correct_answer ?? ''}
-                    onChange={(e) => onChange({ correct_answer: e.target.value === '' ? undefined : Number(e.target.value) })}
-                    className="h-8 text-sm w-40 mt-0.5"
-                    placeholder="např. 600"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Podíl správných odpovědí v populaci (ČSÚ/PIAAC)</Label>
-                  <div className="flex items-center gap-2 mt-0.5">
+        <EditorSection icon={Calculator} title="PIAAC numerický bypass" defaultOpen={!!(question.is_numeric || question.serial_subtraction)}>
+          <div className="space-y-4">
+
+            {/* ── Mode A: single correct-answer numeric question ── */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={question.is_numeric ?? false}
+                  onChange={(e) => onChange({
+                    is_numeric: e.target.checked || undefined,
+                    correct_answer: e.target.checked ? question.correct_answer : undefined,
+                    correct_rate: e.target.checked ? question.correct_rate : undefined,
+                    // mutually exclusive with serial_subtraction
+                    serial_subtraction: e.target.checked ? undefined : question.serial_subtraction,
+                  })}
+                  className="rounded"
+                />
+                <span>Faktická otázka se správnou odpovědí</span>
+              </label>
+              <p className="text-[11px] text-muted-foreground leading-relaxed pl-6">
+                Zapne stochastický generátor odpovědí na základě PIAAC skóre respondenta.
+                AI nebude použito — odpovědi budou statisticky kalibrovány.
+              </p>
+              {question.is_numeric && (
+                <div className="pl-6 pt-1 space-y-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Správná odpověď</Label>
                     <Input
                       type="number"
-                      step="0.01"
-                      min="0.01"
-                      max="0.99"
-                      value={question.correct_rate ?? ''}
-                      onChange={(e) => onChange({ correct_rate: e.target.value === '' ? undefined : Number(e.target.value) })}
-                      className="h-8 text-sm w-40"
-                      placeholder="např. 0.63"
+                      value={question.correct_answer ?? ''}
+                      onChange={(e) => onChange({ correct_answer: e.target.value === '' ? undefined : Number(e.target.value) })}
+                      className="h-8 text-sm w-40 mt-0.5"
+                      placeholder="např. 600"
                     />
-                    <span className="text-xs text-muted-foreground">
-                      {question.correct_rate != null ? `${Math.round(question.correct_rate * 100)} %` : 'neuvedeno — použije se heuristika'}
-                    </span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Hodnota 0.01–0.99. Kalibruje obtížnost IRT modelu tak, aby populační průměr P(správně) odpovídal referenčním datům.
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Podíl správných odpovědí v populaci (ČSÚ/PIAAC)</Label>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max="0.99"
+                        value={question.correct_rate ?? ''}
+                        onChange={(e) => onChange({ correct_rate: e.target.value === '' ? undefined : Number(e.target.value) })}
+                        className="h-8 text-sm w-40"
+                        placeholder="např. 0.63"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {question.correct_rate != null ? `${Math.round(question.correct_rate * 100)} %` : 'neuvedeno — použije se heuristika'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Hodnota 0.01–0.99. Kalibruje obtížnost IRT modelu tak, aby populační průměr P(správně) odpovídal referenčním datům.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Separator ── */}
+            <div className="border-t border-border/40" />
+
+            {/* ── Mode B: serial subtraction (e.g. 100 − 7 × 5) ── */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!question.serial_subtraction}
+                  onChange={(e) => onChange({
+                    serial_subtraction: e.target.checked ? { start: 100, step: 7, count: 5 } : undefined,
+                    // mutually exclusive with is_numeric
+                    is_numeric: e.target.checked ? undefined : question.is_numeric,
+                    correct_answer: e.target.checked ? undefined : question.correct_answer,
+                    correct_rate: e.target.checked ? undefined : question.correct_rate,
+                  })}
+                  className="rounded"
+                />
+                <span>Sériové odečítání (kognitivní PIAAC bypass)</span>
+              </label>
+              <p className="text-[11px] text-muted-foreground leading-relaxed pl-6">
+                Pro otázky typu „100 − 7, od výsledku znovu − 7…". Generuje sekvenci odpovědí a mapuje
+                skóre (počet správných odečtení) na škálu 1–5 dle PIAAC numerické způsobilosti respondenta.
+                AI nebude použito.
+              </p>
+              {question.serial_subtraction && (
+                <div className="pl-6 pt-1 space-y-2">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Počáteční číslo</Label>
+                      <Input
+                        type="number"
+                        value={question.serial_subtraction.start}
+                        onChange={(e) => onChange({
+                          serial_subtraction: {
+                            ...question.serial_subtraction!,
+                            start: e.target.value === '' ? 100 : Number(e.target.value),
+                          },
+                        })}
+                        className="h-8 text-sm mt-0.5"
+                        placeholder="100"
+                        min={1}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Krok odečítání</Label>
+                      <Input
+                        type="number"
+                        value={question.serial_subtraction.step}
+                        onChange={(e) => onChange({
+                          serial_subtraction: {
+                            ...question.serial_subtraction!,
+                            step: e.target.value === '' ? 7 : Number(e.target.value),
+                          },
+                        })}
+                        className="h-8 text-sm mt-0.5"
+                        placeholder="7"
+                        min={1}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Počet opakování</Label>
+                      <Input
+                        type="number"
+                        value={question.serial_subtraction.count}
+                        onChange={(e) => onChange({
+                          serial_subtraction: {
+                            ...question.serial_subtraction!,
+                            count: e.target.value === '' ? 5 : Number(e.target.value),
+                          },
+                        })}
+                        className="h-8 text-sm mt-0.5"
+                        placeholder="5"
+                        min={1}
+                        max={20}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Správné odpovědi:{' '}
+                    {Array.from({ length: question.serial_subtraction.count }, (_, i) =>
+                      question.serial_subtraction!.start - question.serial_subtraction!.step * (i + 1)
+                    ).join(', ')}
+                    {' '}→ skóre 1–5
                   </p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
           </div>
         </EditorSection>
       )}
